@@ -34,6 +34,7 @@ import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.util.HashMap;
 import java.util.Map;
+import okhttp3.internal.http2.StreamResetException;
 import org.apache.druid.discovery.DiscoveryDruidNode;
 import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.guice.annotations.Json;
@@ -126,7 +127,7 @@ public class DefaultK8sApiClient implements K8sApiClient {
                 private Watch.Response<DiscoveryDruidNodeAndResourceVersion> obj;
 
                 @Override
-                public boolean hasNext() throws SocketTimeoutException {
+                public boolean hasNext() throws IOException {
                     try {
                         while (watch.hasNext()) {
                             Watch.Response<V1Pod> item = watch.next();
@@ -145,7 +146,7 @@ public class DefaultK8sApiClient implements K8sApiClient {
                                             nodeRole);
                                 }
 
-                                obj = new Watch.Response<DiscoveryDruidNodeAndResourceVersion>(item.type, result);
+                                obj = new Watch.Response<>(item.type, result);
                                 return true;
                             } else if (item != null && item.type != null && item.type.equals(WatchResult.BOOKMARK)) {
                                 // Events with type BOOKMARK will only contain resourceVersion and no metadata. See
@@ -159,9 +160,11 @@ public class DefaultK8sApiClient implements K8sApiClient {
                     } catch (RuntimeException ex) {
                         if (ex.getCause() instanceof SocketTimeoutException) {
                             throw (SocketTimeoutException) ex.getCause();
-                        } else {
-                            throw ex;
                         }
+                        if (ex.getCause() instanceof StreamResetException) {
+                            throw new ChannelResetException(ex.getCause());
+                        }
+                        throw ex;
                     }
 
                     return false;

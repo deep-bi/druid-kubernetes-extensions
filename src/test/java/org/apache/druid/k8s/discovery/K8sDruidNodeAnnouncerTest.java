@@ -61,8 +61,7 @@ public class K8sDruidNodeAnnouncerTest {
         Assert.assertEquals(podInfo.getPodName(), podNameArg.getValue());
         Assert.assertEquals(podInfo.getPodNamespace(), namespaceArg.getValue());
 
-        List<Map<String, Object>> actualPatchList =
-                jsonMapper.readValue(patchArg.getValue(), new TypeReference<List<Map<String, Object>>>() {});
+        List<Map<String, Object>> actualPatchList = jsonMapper.readValue(patchArg.getValue(), new TypeReference<>() {});
 
         List<Map<String, Object>> expectedPatchList = Lists.newArrayList(
                 ImmutableMap.of(
@@ -101,8 +100,7 @@ public class K8sDruidNodeAnnouncerTest {
         Assert.assertEquals(podInfo.getPodName(), podNameArg.getValue());
         Assert.assertEquals(podInfo.getPodNamespace(), namespaceArg.getValue());
 
-        List<Map<String, String>> actualPatchList =
-                jsonMapper.readValue(patchArg.getValue(), new TypeReference<List<Map<String, String>>>() {});
+        List<Map<String, String>> actualPatchList = jsonMapper.readValue(patchArg.getValue(), new TypeReference<>() {});
 
         List<Map<String, String>> expectedPatchList = Lists.newArrayList(
                 ImmutableMap.of(

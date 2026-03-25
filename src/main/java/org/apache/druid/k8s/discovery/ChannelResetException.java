@@ -18,15 +18,10 @@
  */
 package org.apache.druid.k8s.discovery;
 
-import io.kubernetes.client.util.Watch;
 import java.io.IOException;
 
-public interface WatchResult extends AutoCloseable {
-    String ADDED = "ADDED";
-    String DELETED = "DELETED";
-    String BOOKMARK = "BOOKMARK";
-
-    boolean hasNext() throws IOException;
-
-    Watch.Response<DiscoveryDruidNodeAndResourceVersion> next();
+public class ChannelResetException extends IOException {
+    public ChannelResetException(Throwable ex) {
+        super(ex);
+    }
 }

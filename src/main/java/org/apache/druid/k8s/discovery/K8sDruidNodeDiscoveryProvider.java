@@ -30,7 +30,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
-import okhttp3.internal.http2.StreamResetException;
 import org.apache.druid.concurrent.LifecycleLock;
 import org.apache.druid.discovery.BaseNodeRoleWatcher;
 import org.apache.druid.discovery.DiscoveryDruidNode;
@@ -259,7 +258,7 @@ public class K8sDruidNodeDiscoveryProvider extends DruidNodeDiscoveryProvider {
 
                     LOGGER.trace("Watch closed normally for role[%s]", this.nodeRole);
                     return;
-                } catch (StreamResetException ex) {
+                } catch (ChannelResetException ex) {
                     LOGGER.debug("Watch stream terminated normally for role[%s], restarting", this.nodeRole);
                     return;
                 } catch (SocketTimeoutException ex) {
