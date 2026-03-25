@@ -25,13 +25,13 @@
     <artifactId>druid-kubernetes-extensions</artifactId>
     <name>druid-kubernetes-extensions</name>
     <description>druid-kubernetes-extensions</description>
-    <version>35.0.1-deepbi1</version>
+    <version>36.0.0-deepbi1</version>
 
     <properties>
-        <java.version>11</java.version>
+        <java.version>17</java.version>
         <maven.compiler.release>${java.version}</maven.compiler.release>
         <kubernetes.client.version>19.0.0</kubernetes.client.version>
-        <druid.version>35.0.1</druid.version>
+        <druid.version>36.0.0</druid.version>
         <jackson.version>2.19.2</jackson.version>
         <guice.version>5.1.0</guice.version>
         <jacoco.version>0.8.12</jacoco.version>
