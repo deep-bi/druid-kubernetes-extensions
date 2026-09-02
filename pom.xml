@@ -25,30 +25,24 @@
     <artifactId>druid-kubernetes-extensions</artifactId>
     <name>druid-kubernetes-extensions</name>
     <description>druid-kubernetes-extensions</description>
-    <version>36.0.0-deepbi1</version>
+    <version>37.0.0-deepbi1</version>
 
     <properties>
         <java.version>17</java.version>
         <maven.compiler.release>${java.version}</maven.compiler.release>
-        <kubernetes.client.version>19.0.0</kubernetes.client.version>
-        <druid.version>36.0.0</druid.version>
-        <jackson.version>2.19.2</jackson.version>
-        <guice.version>5.1.0</guice.version>
-        <jacoco.version>0.8.12</jacoco.version>
+        <kubernetes.client.version>25.0.0-legacy</kubernetes.client.version>
+        <druid.version>37.0.0</druid.version>
+        <jackson.version>2.20.2</jackson.version>
+        <guice.version>6.0.0</guice.version>
+        <jacoco.version>0.8.14</jacoco.version>
         <guava.version>32.1.3-jre</guava.version>
+        <okhttp.version>5.3.2</okhttp.version>
     </properties>
 
-    <dependencyManagement>
-        <dependencies>
-            <!-- This is an indirect dependency of io.kubernetes.client-java
-            update to address vulnerability in transitive dependency okio used by okhttp -->
-            <dependency>
-                <groupId>com.squareup.okhttp3</groupId>
-                <artifactId>okhttp</artifactId>
-                <version>4.12.0</version>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
+    <organization>
+        <name>Deep.BI</name>
+        <url>https://www.deep.bi/</url>
+    </organization>
 
     <dependencies>
         <dependency>
@@ -68,29 +62,69 @@
             <groupId>io.kubernetes</groupId>
             <artifactId>client-java</artifactId>
             <version>${kubernetes.client.version}</version>
+            <exclusions>
+                <!-- client-java-proto brings in protobuf-java 4.x which Druid does not yet support project-wide.
+                     The Kubernetes API supports multiple wire formats (JSON, YAML, Protobuf, etc.) but this extension
+                     is not currently using the proto client so exclusion is safe -->
+                <exclusion>
+                    <groupId>io.kubernetes</groupId>
+                    <artifactId>client-java-proto</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.google.protobuf</groupId>
+                    <artifactId>protobuf-java</artifactId>
+                </exclusion>
+                <!-- Azure AD auth library and its transitive OIDC/JWT stack — only needed for AKS token-based
+                     authentication which this extension does not use -->
+                <exclusion>
+                    <groupId>com.microsoft.azure</groupId>
+                    <artifactId>adal4j</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>io.kubernetes</groupId>
             <artifactId>client-java-extended</artifactId>
             <version>${kubernetes.client.version}</version>
+            <exclusions>
+                <!-- client-java-proto brings in protobuf-java 4.x which Druid does not yet support project-wide.
+                     The Kubernetes API supports multiple wire formats (JSON, YAML, Protobuf, etc.) but this extension
+                     is not currently using the proto client so exclusion is safe -->
+                <exclusion>
+                    <groupId>io.kubernetes</groupId>
+                    <artifactId>client-java-proto</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>io.kubernetes</groupId>
             <artifactId>client-java-api</artifactId>
             <version>${kubernetes.client.version}</version>
+            <exclusions>
+                <!-- jakarta.ws.rs-api 4.0 conflicts with the javax.ws.rs 1.x used elsewhere in Druid -->
+                <exclusion>
+                    <groupId>jakarta.ws.rs</groupId>
+                    <artifactId>jakarta.ws.rs-api</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp-jvm</artifactId>
+            <version>${okhttp.version}</version>
         </dependency>
 
         <!-- Tests -->
         <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.13.2</version>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>5.14.3</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.easymock</groupId>
             <artifactId>easymock</artifactId>
-            <version>5.2.0</version>
+            <version>5.6.0</version>
             <scope>test</scope>
         </dependency>
 
@@ -134,7 +168,7 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-annotations</artifactId>
-            <version>${jackson.version}</version>
+            <version>2.20</version>
             <scope>provided</scope>
         </dependency>
 
@@ -148,12 +182,26 @@
                     <artifactId>maven-dependency-plugin</artifactId>
                     <configuration>
                         <!-- analyze incorrectly flags this dependency as missing when omitted, and unused when declared -->
-                        <ignoredDependencies>io.kubernetes:client-java-api-fluent:jar:19.0.0</ignoredDependencies>
+                        <ignoredDependencies>io.kubernetes:client-java-api-fluent:jar:${kubernetes.client.version}</ignoredDependencies>
                     </configuration>
                 </plugin>
             </plugins>
         </pluginManagement>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.2.2</version>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Implementation-Title>${project.artifactId}</Implementation-Title>
+                            <Implementation-Version>${project.version}</Implementation-Version>
+                            <Implementation-Vendor>${project.organization.name}</Implementation-Vendor>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>com.diffplug.spotless</groupId>
                 <artifactId>spotless-maven-plugin</artifactId>

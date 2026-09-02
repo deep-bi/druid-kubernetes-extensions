@@ -30,8 +30,8 @@ import org.apache.druid.jackson.DefaultObjectMapper;
 import org.apache.druid.server.DruidNode;
 import org.easymock.Capture;
 import org.easymock.EasyMock;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 public class K8sDruidNodeAnnouncerTest {
     private final DiscoveryDruidNode testNode = new DiscoveryDruidNode(
@@ -58,8 +58,8 @@ public class K8sDruidNodeAnnouncerTest {
                 new K8sDruidNodeAnnouncer(podInfo, discoveryConfig, mockK8sApiClient, jsonMapper);
         announcer.announce(testNode);
 
-        Assert.assertEquals(podInfo.getPodName(), podNameArg.getValue());
-        Assert.assertEquals(podInfo.getPodNamespace(), namespaceArg.getValue());
+        Assertions.assertEquals(podInfo.getPodName(), podNameArg.getValue());
+        Assertions.assertEquals(podInfo.getPodNamespace(), namespaceArg.getValue());
 
         List<Map<String, Object>> actualPatchList = jsonMapper.readValue(patchArg.getValue(), new TypeReference<>() {});
 
@@ -80,7 +80,7 @@ public class K8sDruidNodeAnnouncerTest {
                         "op", "add",
                         "path", "/metadata/annotations/druidNodeInfo-router",
                         "value", jsonMapper.writeValueAsString(testNode)));
-        Assert.assertEquals(expectedPatchList, actualPatchList);
+        Assertions.assertEquals(expectedPatchList, actualPatchList);
     }
 
     @Test
@@ -97,8 +97,8 @@ public class K8sDruidNodeAnnouncerTest {
                 new K8sDruidNodeAnnouncer(podInfo, discoveryConfig, mockK8sApiClient, jsonMapper);
         announcer.unannounce(testNode);
 
-        Assert.assertEquals(podInfo.getPodName(), podNameArg.getValue());
-        Assert.assertEquals(podInfo.getPodNamespace(), namespaceArg.getValue());
+        Assertions.assertEquals(podInfo.getPodName(), podNameArg.getValue());
+        Assertions.assertEquals(podInfo.getPodNamespace(), namespaceArg.getValue());
 
         List<Map<String, String>> actualPatchList = jsonMapper.readValue(patchArg.getValue(), new TypeReference<>() {});
 
@@ -115,6 +115,6 @@ public class K8sDruidNodeAnnouncerTest {
                 ImmutableMap.of(
                         "op", "remove",
                         "path", "/metadata/annotations/druidNodeInfo-router"));
-        Assert.assertEquals(expectedPatchList, actualPatchList);
+        Assertions.assertEquals(expectedPatchList, actualPatchList);
     }
 }
