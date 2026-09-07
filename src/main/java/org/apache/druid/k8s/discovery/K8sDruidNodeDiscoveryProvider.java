@@ -266,6 +266,10 @@ public class K8sDruidNodeDiscoveryProvider extends DruidNodeDiscoveryProvider {
                     return;
                 } catch (ChannelResetException ex) {
                     LOGGER.debug("Watch stream terminated normally for role[%s], restarting", this.nodeRole);
+                    // Apply the same backoff as other retry paths below: a persistently reset stream
+                    // (flaky proxy, LB idle timeout shorter than expected) would otherwise cause an
+                    // unbounded relist/watch loop against the API server.
+                    sleep(watcherErrorRetryWaitMS);
                     return;
                 } catch (SocketTimeoutException ex) {
                     // socket read timeout can happen normally due to k8s not having anything new to push leading to
