@@ -199,6 +199,9 @@
                 <version>2.43.0</version>
                 <configuration>
                     <java>
+                        <importOrder>
+                            <order>,javax,java,\#</order>
+                        </importOrder>
                         <eclipse>
                             <version>4.30</version>
                             <file>${project.basedir}/codestyle/eclipse_formatting.xml</file>
