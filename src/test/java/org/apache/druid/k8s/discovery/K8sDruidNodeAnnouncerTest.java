@@ -16,14 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
-import java.util.List;
-import java.util.Map;
 import org.apache.druid.discovery.DiscoveryDruidNode;
 import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.jackson.DefaultObjectMapper;
@@ -33,88 +32,129 @@ import org.easymock.EasyMock;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-public class K8sDruidNodeAnnouncerTest {
-    private final DiscoveryDruidNode testNode = new DiscoveryDruidNode(
-            new DruidNode("druid/router", "test-host", true, 80, null, true, false), NodeRole.ROUTER, null);
+import java.util.List;
+import java.util.Map;
 
-    private final ObjectMapper jsonMapper = new DefaultObjectMapper();
+public class K8sDruidNodeAnnouncerTest
+{
+  private final DiscoveryDruidNode testNode = new DiscoveryDruidNode(
+      new DruidNode("druid/router", "test-host", true, 80, null, true, false),
+      NodeRole.ROUTER,
+      null);
 
-    private final PodInfo podInfo = new PodInfo("testpod", "testns");
+  private final ObjectMapper jsonMapper = new DefaultObjectMapper();
 
-    private final K8sDiscoveryConfig discoveryConfig =
-            new K8sDiscoveryConfig("druid-cluster", null, null, null, null, null, null, null);
+  private final PodInfo podInfo = new PodInfo("testpod", "testns");
 
-    @Test
-    public void testAnnounce() throws Exception {
-        K8sApiClient mockK8sApiClient = EasyMock.createMock(K8sApiClient.class);
-        Capture<String> podNameArg = Capture.newInstance();
-        Capture<String> namespaceArg = Capture.newInstance();
-        Capture<String> patchArg = Capture.newInstance();
-        mockK8sApiClient.patchPod(
-                EasyMock.capture(podNameArg), EasyMock.capture(namespaceArg), EasyMock.capture(patchArg));
-        EasyMock.replay(mockK8sApiClient);
+  private final K8sDiscoveryConfig discoveryConfig = new K8sDiscoveryConfig(
+      "druid-cluster",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null);
 
-        K8sDruidNodeAnnouncer announcer =
-                new K8sDruidNodeAnnouncer(podInfo, discoveryConfig, mockK8sApiClient, jsonMapper);
-        announcer.announce(testNode);
+  @Test
+  public void testAnnounce() throws Exception
+  {
+    K8sApiClient mockK8sApiClient = EasyMock.createMock(K8sApiClient.class);
+    Capture<String> podNameArg = Capture.newInstance();
+    Capture<String> namespaceArg = Capture.newInstance();
+    Capture<String> patchArg = Capture.newInstance();
+    mockK8sApiClient.patchPod(
+        EasyMock.capture(podNameArg),
+        EasyMock.capture(namespaceArg),
+        EasyMock.capture(patchArg));
+    EasyMock.replay(mockK8sApiClient);
 
-        Assertions.assertEquals(podInfo.getPodName(), podNameArg.getValue());
-        Assertions.assertEquals(podInfo.getPodNamespace(), namespaceArg.getValue());
+    K8sDruidNodeAnnouncer announcer = new K8sDruidNodeAnnouncer(podInfo, discoveryConfig, mockK8sApiClient, jsonMapper);
+    announcer.announce(testNode);
 
-        List<Map<String, Object>> actualPatchList = jsonMapper.readValue(patchArg.getValue(), new TypeReference<>() {});
+    Assertions.assertEquals(podInfo.getPodName(), podNameArg.getValue());
+    Assertions.assertEquals(podInfo.getPodNamespace(), namespaceArg.getValue());
 
-        List<Map<String, Object>> expectedPatchList = Lists.newArrayList(
-                ImmutableMap.of(
-                        "op", "add",
-                        "path", "/metadata/labels/druidDiscoveryAnnouncement-router",
-                        "value", "true"),
-                ImmutableMap.of(
-                        "op", "add",
-                        "path", "/metadata/labels/druidDiscoveryAnnouncement-id-hash",
-                        "value", "1429561393"),
-                ImmutableMap.of(
-                        "op", "add",
-                        "path", "/metadata/labels/druidDiscoveryAnnouncement-cluster-identifier",
-                        "value", discoveryConfig.getClusterIdentifier()),
-                ImmutableMap.of(
-                        "op", "add",
-                        "path", "/metadata/annotations/druidNodeInfo-router",
-                        "value", jsonMapper.writeValueAsString(testNode)));
-        Assertions.assertEquals(expectedPatchList, actualPatchList);
-    }
+    List<Map<String, Object>> actualPatchList = jsonMapper.readValue(patchArg.getValue(), new TypeReference<>()
+    {
+    });
 
-    @Test
-    public void testUnannounce() throws Exception {
-        K8sApiClient mockK8sApiClient = EasyMock.createMock(K8sApiClient.class);
-        Capture<String> podNameArg = Capture.newInstance();
-        Capture<String> namespaceArg = Capture.newInstance();
-        Capture<String> patchArg = Capture.newInstance();
-        mockK8sApiClient.patchPod(
-                EasyMock.capture(podNameArg), EasyMock.capture(namespaceArg), EasyMock.capture(patchArg));
-        EasyMock.replay(mockK8sApiClient);
+    List<Map<String, Object>> expectedPatchList = Lists.newArrayList(
+        ImmutableMap.of(
+            "op",
+            "add",
+            "path",
+            "/metadata/labels/druidDiscoveryAnnouncement-router",
+            "value",
+            "true"),
+        ImmutableMap.of(
+            "op",
+            "add",
+            "path",
+            "/metadata/labels/druidDiscoveryAnnouncement-id-hash",
+            "value",
+            "1429561393"),
+        ImmutableMap.of(
+            "op",
+            "add",
+            "path",
+            "/metadata/labels/druidDiscoveryAnnouncement-cluster-identifier",
+            "value",
+            discoveryConfig.getClusterIdentifier()),
+        ImmutableMap.of(
+            "op",
+            "add",
+            "path",
+            "/metadata/annotations/druidNodeInfo-router",
+            "value",
+            jsonMapper.writeValueAsString(testNode)));
+    Assertions.assertEquals(expectedPatchList, actualPatchList);
+  }
 
-        K8sDruidNodeAnnouncer announcer =
-                new K8sDruidNodeAnnouncer(podInfo, discoveryConfig, mockK8sApiClient, jsonMapper);
-        announcer.unannounce(testNode);
+  @Test
+  public void testUnannounce() throws Exception
+  {
+    K8sApiClient mockK8sApiClient = EasyMock.createMock(K8sApiClient.class);
+    Capture<String> podNameArg = Capture.newInstance();
+    Capture<String> namespaceArg = Capture.newInstance();
+    Capture<String> patchArg = Capture.newInstance();
+    mockK8sApiClient.patchPod(
+        EasyMock.capture(podNameArg),
+        EasyMock.capture(namespaceArg),
+        EasyMock.capture(patchArg));
+    EasyMock.replay(mockK8sApiClient);
 
-        Assertions.assertEquals(podInfo.getPodName(), podNameArg.getValue());
-        Assertions.assertEquals(podInfo.getPodNamespace(), namespaceArg.getValue());
+    K8sDruidNodeAnnouncer announcer = new K8sDruidNodeAnnouncer(podInfo, discoveryConfig, mockK8sApiClient, jsonMapper);
+    announcer.unannounce(testNode);
 
-        List<Map<String, String>> actualPatchList = jsonMapper.readValue(patchArg.getValue(), new TypeReference<>() {});
+    Assertions.assertEquals(podInfo.getPodName(), podNameArg.getValue());
+    Assertions.assertEquals(podInfo.getPodNamespace(), namespaceArg.getValue());
 
-        List<Map<String, String>> expectedPatchList = Lists.newArrayList(
-                ImmutableMap.of(
-                        "op", "remove",
-                        "path", "/metadata/labels/druidDiscoveryAnnouncement-router"),
-                ImmutableMap.of(
-                        "op", "remove",
-                        "path", "/metadata/labels/druidDiscoveryAnnouncement-id-hash"),
-                ImmutableMap.of(
-                        "op", "remove",
-                        "path", "/metadata/labels/druidDiscoveryAnnouncement-cluster-identifier"),
-                ImmutableMap.of(
-                        "op", "remove",
-                        "path", "/metadata/annotations/druidNodeInfo-router"));
-        Assertions.assertEquals(expectedPatchList, actualPatchList);
-    }
+    List<Map<String, String>> actualPatchList = jsonMapper.readValue(patchArg.getValue(), new TypeReference<>()
+    {
+    });
+
+    List<Map<String, String>> expectedPatchList = Lists.newArrayList(
+        ImmutableMap.of(
+            "op",
+            "remove",
+            "path",
+            "/metadata/labels/druidDiscoveryAnnouncement-router"),
+        ImmutableMap.of(
+            "op",
+            "remove",
+            "path",
+            "/metadata/labels/druidDiscoveryAnnouncement-id-hash"),
+        ImmutableMap.of(
+            "op",
+            "remove",
+            "path",
+            "/metadata/labels/druidDiscoveryAnnouncement-cluster-identifier"),
+        ImmutableMap.of(
+            "op",
+            "remove",
+            "path",
+            "/metadata/annotations/druidNodeInfo-router"));
+    Assertions.assertEquals(expectedPatchList, actualPatchList);
+  }
 }

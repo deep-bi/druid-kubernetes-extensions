@@ -16,10 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import com.google.common.base.Preconditions;
-import javax.annotation.Nullable;
 import org.apache.druid.annotations.SuppressFBWarnings;
 import org.apache.druid.concurrent.LifecycleLock;
 import org.apache.druid.discovery.DruidLeaderSelector;
@@ -29,121 +29,138 @@ import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.server.DruidNode;
 import org.apache.druid.utils.CloseableUtils;
 
-public class K8sDruidLeaderSelector implements DruidLeaderSelector {
-    private static final EmittingLogger LOGGER = new EmittingLogger(K8sDruidLeaderSelector.class);
+import javax.annotation.Nullable;
 
-    private final LifecycleLock lifecycleLock = new LifecycleLock();
+public class K8sDruidLeaderSelector implements DruidLeaderSelector
+{
+  private static final EmittingLogger LOGGER = new EmittingLogger(K8sDruidLeaderSelector.class);
 
-    private DruidLeaderSelector.Listener listener = null;
-    private final LeaderElectorAsyncWrapper leaderLatch;
+  private final LifecycleLock lifecycleLock = new LifecycleLock();
 
-    private volatile boolean leader = false;
+  private DruidLeaderSelector.Listener listener = null;
+  private final LeaderElectorAsyncWrapper leaderLatch;
 
-    @SuppressFBWarnings(value = "VO_VOLATILE_INCREMENT", justification = "incremented but in single thread")
-    private volatile int term = 0;
+  private volatile boolean leader = false;
 
-    public K8sDruidLeaderSelector(
-            @Self DruidNode self,
-            String lockResourceName,
-            String lockResourceNamespace,
-            K8sDiscoveryConfig discoveryConfig,
-            K8sLeaderElectorFactory k8sLeaderElectorFactory) {
-        this.leaderLatch = new LeaderElectorAsyncWrapper(
-                self.getServiceScheme() + "://" + self.getHostAndPortToUse(),
-                lockResourceName,
-                lockResourceNamespace,
-                discoveryConfig,
-                k8sLeaderElectorFactory);
+  @SuppressFBWarnings(value = "VO_VOLATILE_INCREMENT", justification = "incremented but in single thread")
+  private volatile int term = 0;
+
+  public K8sDruidLeaderSelector(
+      @Self DruidNode self,
+      String lockResourceName,
+      String lockResourceNamespace,
+      K8sDiscoveryConfig discoveryConfig,
+      K8sLeaderElectorFactory k8sLeaderElectorFactory)
+  {
+    this.leaderLatch = new LeaderElectorAsyncWrapper(
+        self.getServiceScheme() + "://" + self.getHostAndPortToUse(),
+        lockResourceName,
+        lockResourceNamespace,
+        discoveryConfig,
+        k8sLeaderElectorFactory);
+  }
+
+  private void startLeaderElector(LeaderElectorAsyncWrapper leaderElector)
+  {
+    leaderElector.run(
+        () -> {
+          try {
+            if (leader) {
+              LOGGER.warn(
+                  "I'm being asked to become leader. But I am already the leader. Ignored event.");
+              return;
+            }
+
+            leader = true;
+            term++;
+            listener.becomeLeader();
+          }
+          catch (Throwable ex) {
+            LOGGER.makeAlert(ex, "listener becomeLeader() failed. Unable to become leader")
+                .emit();
+            closeLeaderLatchQuietly();
+            leader = false;
+            // Exit and Kubernetes would simply create a new replacement pod.
+            System.exit(1);
+          }
+        },
+        () -> {
+          try {
+            if (!leader) {
+              LOGGER.warn(
+                  "I'm being asked to stop being leader. But I am not the leader. Ignored event.");
+              return;
+            }
+
+            leader = false;
+            listener.stopBeingLeader();
+          }
+          catch (Throwable ex) {
+            LOGGER.makeAlert(ex, "listener.stopBeingLeader() failed. Unable to stopBeingLeader")
+                .emit();
+          }
+        });
+  }
+
+  @Nullable
+  @Override
+  public String getCurrentLeader()
+  {
+    try {
+      return leaderLatch.getCurrentLeader();
+    }
+    catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  @Override
+  public boolean isLeader()
+  {
+    return leader;
+  }
+
+  @Override
+  public int localTerm()
+  {
+    return term;
+  }
+
+  @Override
+  public void registerListener(DruidLeaderSelector.Listener listener)
+  {
+    Preconditions.checkArgument(listener != null, "listener is null.");
+
+    if (!lifecycleLock.canStart()) {
+      throw new ISE("can't start.");
+    }
+    try {
+      this.listener = listener;
+      startLeaderElector(leaderLatch);
+      lifecycleLock.started();
+    }
+    catch (Exception ex) {
+      throw new RuntimeException(ex);
+    }
+    finally {
+      lifecycleLock.exitStart();
+    }
+  }
+
+  @Override
+  public void unregisterListener()
+  {
+    if (!lifecycleLock.canStop()) {
+      throw new ISE("can't stop.");
     }
 
-    private void startLeaderElector(LeaderElectorAsyncWrapper leaderElector) {
-        leaderElector.run(
-                () -> {
-                    try {
-                        if (leader) {
-                            LOGGER.warn(
-                                    "I'm being asked to become leader. But I am already the leader. Ignored event.");
-                            return;
-                        }
+    closeLeaderLatchQuietly();
+  }
 
-                        leader = true;
-                        term++;
-                        listener.becomeLeader();
-                    } catch (Throwable ex) {
-                        LOGGER.makeAlert(ex, "listener becomeLeader() failed. Unable to become leader")
-                                .emit();
-                        closeLeaderLatchQuietly();
-                        leader = false;
-                        // Exit and Kubernetes would simply create a new replacement pod.
-                        System.exit(1);
-                    }
-                },
-                () -> {
-                    try {
-                        if (!leader) {
-                            LOGGER.warn(
-                                    "I'm being asked to stop being leader. But I am not the leader. Ignored event.");
-                            return;
-                        }
-
-                        leader = false;
-                        listener.stopBeingLeader();
-                    } catch (Throwable ex) {
-                        LOGGER.makeAlert(ex, "listener.stopBeingLeader() failed. Unable to stopBeingLeader")
-                                .emit();
-                    }
-                });
-    }
-
-    @Nullable
-    @Override
-    public String getCurrentLeader() {
-        try {
-            return leaderLatch.getCurrentLeader();
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public boolean isLeader() {
-        return leader;
-    }
-
-    @Override
-    public int localTerm() {
-        return term;
-    }
-
-    @Override
-    public void registerListener(DruidLeaderSelector.Listener listener) {
-        Preconditions.checkArgument(listener != null, "listener is null.");
-
-        if (!lifecycleLock.canStart()) {
-            throw new ISE("can't start.");
-        }
-        try {
-            this.listener = listener;
-            startLeaderElector(leaderLatch);
-            lifecycleLock.started();
-        } catch (Exception ex) {
-            throw new RuntimeException(ex);
-        } finally {
-            lifecycleLock.exitStart();
-        }
-    }
-
-    @Override
-    public void unregisterListener() {
-        if (!lifecycleLock.canStop()) {
-            throw new ISE("can't stop.");
-        }
-
-        closeLeaderLatchQuietly();
-    }
-
-    private void closeLeaderLatchQuietly() {
-        CloseableUtils.closeAndSuppressExceptions(
-                leaderLatch, e -> LOGGER.warn("Exception caught while cleaning up leader latch"));
-    }
+  private void closeLeaderLatchQuietly()
+  {
+    CloseableUtils.closeAndSuppressExceptions(
+        leaderLatch,
+        e -> LOGGER.warn("Exception caught while cleaning up leader latch"));
+  }
 }

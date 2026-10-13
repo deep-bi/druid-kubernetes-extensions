@@ -16,13 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import com.fasterxml.jackson.databind.InjectableValues;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.util.Watch;
-import java.io.IOException;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
 import mockwebserver3.SocketEffect;
@@ -37,117 +37,138 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+
 /**
- * Exercises {@link DefaultK8sApiClient#watchPods} end to end against a real (but local, canned)
- * HTTP watch stream: BOOKMARK events must surface their resourceVersion to the caller instead of
- * a stale or null response, and a mid-stream connection reset must surface as
- * {@link ChannelResetException} rather than an unrelated exception type.
+ * Exercises {@link DefaultK8sApiClient#watchPods} end to end against a real
+ * (but local, canned) HTTP watch stream: BOOKMARK events must surface their
+ * resourceVersion to the caller instead of a stale or null response, and a
+ * mid-stream connection reset must surface as {@link ChannelResetException}
+ * rather than an unrelated exception type.
  */
-public class DefaultK8sApiClientWatchPodsTest {
-    private static final ObjectMapper JSON_MAPPER = new DefaultObjectMapper();
+public class DefaultK8sApiClientWatchPodsTest
+{
+  private static final ObjectMapper JSON_MAPPER = new DefaultObjectMapper();
 
-    static {
-        // DiscoveryDruidNode's @JsonCreator takes a @JacksonInject ObjectMapper, so the mapper
-        // used to deserialize it must know how to inject itself.
-        JSON_MAPPER.setInjectableValues(new InjectableValues.Std().addValue(ObjectMapper.class, JSON_MAPPER));
+  static {
+    // DiscoveryDruidNode's @JsonCreator takes a @JacksonInject ObjectMapper, so the
+    // mapper
+    // used to deserialize it must know how to inject itself.
+    JSON_MAPPER.setInjectableValues(new InjectableValues.Std().addValue(ObjectMapper.class, JSON_MAPPER));
+  }
+
+  private final DiscoveryDruidNode testNode = new DiscoveryDruidNode(
+      new DruidNode("druid/router", "test-host", true, 80, null, true, false),
+      NodeRole.ROUTER,
+      null);
+
+  private MockWebServer server;
+  private DefaultK8sApiClient client;
+
+  @BeforeEach
+  public void setUp() throws IOException
+  {
+    server = new MockWebServer();
+    server.start();
+
+    ApiClient apiClient = new ApiClient().setBasePath(server.url("/").toString());
+    client = new DefaultK8sApiClient(apiClient, JSON_MAPPER);
+  }
+
+  @AfterEach
+  public void tearDown() throws IOException
+  {
+    server.close();
+  }
+
+  @Test
+  public void testBookmarkAsFirstEventSurfacesResourceVersion() throws Exception
+  {
+    enqueueWatchStream(bookmarkLine("100"));
+
+    try (WatchResult result = client.watchPods("testns", null, "99", NodeRole.ROUTER)) {
+      Assertions.assertTrue(result.hasNext());
+      Watch.Response<DiscoveryDruidNodeAndResourceVersion> response = result.next();
+
+      Assertions.assertNotNull(response, "BOOKMARK event must not surface as a null response");
+      Assertions.assertEquals(WatchResult.BOOKMARK, response.type);
+      Assertions.assertNotNull(response.object);
+      Assertions.assertEquals("100", response.object.getResourceVersion());
     }
+  }
 
-    private final DiscoveryDruidNode testNode = new DiscoveryDruidNode(
-            new DruidNode("druid/router", "test-host", true, 80, null, true, false), NodeRole.ROUTER, null);
+  @Test
+  public void testBookmarkAfterRealEventSurfacesItsOwnResourceVersion() throws Exception
+  {
+    enqueueWatchStream(addedLine("200", testNode) + bookmarkLine("201"));
 
-    private MockWebServer server;
-    private DefaultK8sApiClient client;
+    try (WatchResult result = client.watchPods("testns", null, "99", NodeRole.ROUTER)) {
+      Assertions.assertTrue(result.hasNext());
+      Watch.Response<DiscoveryDruidNodeAndResourceVersion> added = result.next();
+      Assertions.assertEquals(WatchResult.ADDED, added.type);
+      Assertions.assertEquals("200", added.object.getResourceVersion());
 
-    @BeforeEach
-    public void setUp() throws IOException {
-        server = new MockWebServer();
-        server.start();
+      Assertions.assertTrue(result.hasNext());
+      Watch.Response<DiscoveryDruidNodeAndResourceVersion> bookmark = result.next();
 
-        ApiClient apiClient = new ApiClient().setBasePath(server.url("/").toString());
-        client = new DefaultK8sApiClient(apiClient, JSON_MAPPER);
+      Assertions.assertNotNull(bookmark, "BOOKMARK event must not surface as a null response");
+      Assertions.assertEquals(WatchResult.BOOKMARK, bookmark.type);
+      Assertions.assertNotNull(bookmark.object);
+      Assertions.assertEquals(
+          "201",
+          bookmark.object.getResourceVersion(),
+          "BOOKMARK must carry its own resourceVersion, not the preceding event's");
     }
+  }
 
-    @AfterEach
-    public void tearDown() throws IOException {
-        server.close();
+  @Test
+  public void testConnectionResetMidStreamSurfacesAsChannelResetException() throws Exception
+  {
+    // Truncate the body mid-object and sever the connection while it's being read,
+    // simulating
+    // a server-side stream reset. okhttp surfaces this as a ProtocolException,
+    // which
+    // DefaultK8sApiClient must remap to ChannelResetException rather than an
+    // unrelated
+    // RuntimeException, so callers can distinguish it from other IO failures.
+    server.enqueue(
+        new MockResponse.Builder()
+            .code(200)
+            .headers(
+                new Headers.Builder()
+                    .add("Content-Type", "application/json")
+                    .build())
+            .body(addedLine("200", testNode).substring(0, 20))
+            .onResponseBody(new SocketEffect.CloseSocket(true, true, true))
+            .build());
+
+    try (WatchResult result = client.watchPods("testns", null, "99", NodeRole.ROUTER)) {
+      Assertions.assertThrows(ChannelResetException.class, result::hasNext);
     }
+  }
 
-    @Test
-    public void testBookmarkAsFirstEventSurfacesResourceVersion() throws Exception {
-        enqueueWatchStream(bookmarkLine("100"));
+  private void enqueueWatchStream(String body)
+  {
+    server.enqueue(
+        new MockResponse(
+            200,
+            new Headers.Builder().add("Content-Type", "application/json").build(),
+            body));
+  }
 
-        try (WatchResult result = client.watchPods("testns", null, "99", NodeRole.ROUTER)) {
-            Assertions.assertTrue(result.hasNext());
-            Watch.Response<DiscoveryDruidNodeAndResourceVersion> response = result.next();
+  private static String bookmarkLine(String resourceVersion)
+  {
+    return "{\"type\":\"BOOKMARK\",\"object\":{\"kind\":\"Pod\",\"apiVersion\":\"v1\",\"metadata\":{\"resourceVersion\":\""
+        + resourceVersion + "\"}}}\n";
+  }
 
-            Assertions.assertNotNull(response, "BOOKMARK event must not surface as a null response");
-            Assertions.assertEquals(WatchResult.BOOKMARK, response.type);
-            Assertions.assertNotNull(response.object);
-            Assertions.assertEquals("100", response.object.getResourceVersion());
-        }
-    }
-
-    @Test
-    public void testBookmarkAfterRealEventSurfacesItsOwnResourceVersion() throws Exception {
-        enqueueWatchStream(addedLine("200", testNode) + bookmarkLine("201"));
-
-        try (WatchResult result = client.watchPods("testns", null, "99", NodeRole.ROUTER)) {
-            Assertions.assertTrue(result.hasNext());
-            Watch.Response<DiscoveryDruidNodeAndResourceVersion> added = result.next();
-            Assertions.assertEquals(WatchResult.ADDED, added.type);
-            Assertions.assertEquals("200", added.object.getResourceVersion());
-
-            Assertions.assertTrue(result.hasNext());
-            Watch.Response<DiscoveryDruidNodeAndResourceVersion> bookmark = result.next();
-
-            Assertions.assertNotNull(bookmark, "BOOKMARK event must not surface as a null response");
-            Assertions.assertEquals(WatchResult.BOOKMARK, bookmark.type);
-            Assertions.assertNotNull(bookmark.object);
-            Assertions.assertEquals(
-                    "201",
-                    bookmark.object.getResourceVersion(),
-                    "BOOKMARK must carry its own resourceVersion, not the preceding event's");
-        }
-    }
-
-    @Test
-    public void testConnectionResetMidStreamSurfacesAsChannelResetException() throws Exception {
-        // Truncate the body mid-object and sever the connection while it's being read, simulating
-        // a server-side stream reset. okhttp surfaces this as a ProtocolException, which
-        // DefaultK8sApiClient must remap to ChannelResetException rather than an unrelated
-        // RuntimeException, so callers can distinguish it from other IO failures.
-        server.enqueue(new MockResponse.Builder()
-                .code(200)
-                .headers(new Headers.Builder()
-                        .add("Content-Type", "application/json")
-                        .build())
-                .body(addedLine("200", testNode).substring(0, 20))
-                .onResponseBody(new SocketEffect.CloseSocket(true, true, true))
-                .build());
-
-        try (WatchResult result = client.watchPods("testns", null, "99", NodeRole.ROUTER)) {
-            Assertions.assertThrows(ChannelResetException.class, result::hasNext);
-        }
-    }
-
-    private void enqueueWatchStream(String body) {
-        server.enqueue(new MockResponse(
-                200,
-                new Headers.Builder().add("Content-Type", "application/json").build(),
-                body));
-    }
-
-    private static String bookmarkLine(String resourceVersion) {
-        return "{\"type\":\"BOOKMARK\",\"object\":{\"kind\":\"Pod\",\"apiVersion\":\"v1\",\"metadata\":{\"resourceVersion\":\""
-                + resourceVersion + "\"}}}\n";
-    }
-
-    private static String addedLine(String resourceVersion, DiscoveryDruidNode node) throws Exception {
-        String infoAnnotation = K8sDruidNodeAnnouncer.getInfoAnnotation(node.getNodeRole());
-        String nodeJson = StringUtils.replace(JSON_MAPPER.writeValueAsString(node), "\"", "\\\"");
-        return "{\"type\":\"ADDED\",\"object\":{\"kind\":\"Pod\",\"apiVersion\":\"v1\",\"metadata\":{"
-                + "\"name\":\"test-pod\",\"resourceVersion\":\"" + resourceVersion + "\","
-                + "\"annotations\":{\"" + infoAnnotation + "\":\"" + nodeJson + "\"}},"
-                + "\"status\":{\"containerStatuses\":[{\"name\":\"main\",\"ready\":true}]}}}\n";
-    }
+  private static String addedLine(String resourceVersion, DiscoveryDruidNode node) throws Exception
+  {
+    String infoAnnotation = K8sDruidNodeAnnouncer.getInfoAnnotation(node.getNodeRole());
+    String nodeJson = StringUtils.replace(JSON_MAPPER.writeValueAsString(node), "\"", "\\\"");
+    return "{\"type\":\"ADDED\",\"object\":{\"kind\":\"Pod\",\"apiVersion\":\"v1\",\"metadata\":{"
+        + "\"name\":\"test-pod\",\"resourceVersion\":\"" + resourceVersion + "\","
+        + "\"annotations\":{\"" + infoAnnotation + "\":\"" + nodeJson + "\"}},"
+        + "\"status\":{\"containerStatuses\":[{\"name\":\"main\",\"ready\":true}]}}}\n";
+  }
 }

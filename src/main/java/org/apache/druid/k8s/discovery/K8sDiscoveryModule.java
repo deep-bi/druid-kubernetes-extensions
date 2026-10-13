@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import com.fasterxml.jackson.databind.Module;
@@ -26,8 +27,6 @@ import com.google.inject.Binder;
 import com.google.inject.Key;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.util.Config;
-import java.io.IOException;
-import java.util.List;
 import org.apache.druid.client.coordinator.Coordinator;
 import org.apache.druid.client.indexing.IndexingService;
 import org.apache.druid.discovery.DruidLeaderSelector;
@@ -39,54 +38,63 @@ import org.apache.druid.guice.PolyBind;
 import org.apache.druid.initialization.DruidModule;
 import org.apache.druid.k8s.config.K8sNodeLabelDynamicConfigProvider;
 
-public class K8sDiscoveryModule implements DruidModule {
-    private static final String K8S_KEY = "k8s";
+import java.io.IOException;
+import java.util.List;
 
-    @Override
-    public List<? extends Module> getJacksonModules() {
-        return ImmutableList.of(new SimpleModule("K8sDynamicConfigProviderModule")
-                .registerSubtypes(new NamedType(K8sNodeLabelDynamicConfigProvider.class, "k8sNodeLabel")));
-    }
+public class K8sDiscoveryModule implements DruidModule
+{
+  private static final String K8S_KEY = "k8s";
 
-    @Override
-    public void configure(Binder binder) {
-        JsonConfigProvider.bind(binder, "druid.discovery.k8s", K8sDiscoveryConfig.class);
+  @Override
+  public List<? extends Module> getJacksonModules()
+  {
+    return ImmutableList.of(
+        new SimpleModule("K8sDynamicConfigProviderModule")
+            .registerSubtypes(new NamedType(K8sNodeLabelDynamicConfigProvider.class, "k8sNodeLabel")));
+  }
 
-        binder.bind(ApiClient.class)
-                .toProvider(() -> {
-                    try {
-                        // Note: we can probably improve things here about figuring out how to find the K8S API server,
-                        // HTTP client timeouts etc.
-                        return Config.defaultClient();
-                    } catch (IOException ex) {
-                        throw new RuntimeException("Failed to create K8s ApiClient instance", ex);
-                    }
-                })
-                .in(LazySingleton.class);
+  @Override
+  public void configure(Binder binder)
+  {
+    JsonConfigProvider.bind(binder, "druid.discovery.k8s", K8sDiscoveryConfig.class);
 
-        binder.bind(K8sApiClient.class).to(DefaultK8sApiClient.class).in(LazySingleton.class);
-        binder.bind(K8sLeaderElectorFactory.class)
-                .to(DefaultK8sLeaderElectorFactory.class)
-                .in(LazySingleton.class);
+    binder.bind(ApiClient.class)
+        .toProvider(() -> {
+          try {
+            // Note: we can probably improve things here about figuring out how to find the
+            // K8S API server,
+            // HTTP client timeouts etc.
+            return Config.defaultClient();
+          }
+          catch (IOException ex) {
+            throw new RuntimeException("Failed to create K8s ApiClient instance", ex);
+          }
+        })
+        .in(LazySingleton.class);
 
-        PolyBind.optionBinder(binder, Key.get(DruidNodeDiscoveryProvider.class))
-                .addBinding(K8S_KEY)
-                .to(K8sDruidNodeDiscoveryProvider.class)
-                .in(LazySingleton.class);
+    binder.bind(K8sApiClient.class).to(DefaultK8sApiClient.class).in(LazySingleton.class);
+    binder.bind(K8sLeaderElectorFactory.class)
+        .to(DefaultK8sLeaderElectorFactory.class)
+        .in(LazySingleton.class);
 
-        PolyBind.optionBinder(binder, Key.get(DruidNodeAnnouncer.class))
-                .addBinding(K8S_KEY)
-                .to(K8sDruidNodeAnnouncer.class)
-                .in(LazySingleton.class);
+    PolyBind.optionBinder(binder, Key.get(DruidNodeDiscoveryProvider.class))
+        .addBinding(K8S_KEY)
+        .to(K8sDruidNodeDiscoveryProvider.class)
+        .in(LazySingleton.class);
 
-        PolyBind.optionBinder(binder, Key.get(DruidLeaderSelector.class, Coordinator.class))
-                .addBinding(K8S_KEY)
-                .toProvider(K8sDruidLeaderSelectorProvider.K8sCoordinatorDruidLeaderSelectorProvider.class)
-                .in(LazySingleton.class);
+    PolyBind.optionBinder(binder, Key.get(DruidNodeAnnouncer.class))
+        .addBinding(K8S_KEY)
+        .to(K8sDruidNodeAnnouncer.class)
+        .in(LazySingleton.class);
 
-        PolyBind.optionBinder(binder, Key.get(DruidLeaderSelector.class, IndexingService.class))
-                .addBinding(K8S_KEY)
-                .toProvider(K8sDruidLeaderSelectorProvider.K8sIndexingServiceDruidLeaderSelectorProvider.class)
-                .in(LazySingleton.class);
-    }
+    PolyBind.optionBinder(binder, Key.get(DruidLeaderSelector.class, Coordinator.class))
+        .addBinding(K8S_KEY)
+        .toProvider(K8sDruidLeaderSelectorProvider.K8sCoordinatorDruidLeaderSelectorProvider.class)
+        .in(LazySingleton.class);
+
+    PolyBind.optionBinder(binder, Key.get(DruidLeaderSelector.class, IndexingService.class))
+        .addBinding(K8S_KEY)
+        .toProvider(K8sDruidLeaderSelectorProvider.K8sIndexingServiceDruidLeaderSelectorProvider.class)
+        .in(LazySingleton.class);
+  }
 }

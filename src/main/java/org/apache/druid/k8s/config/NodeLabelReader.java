@@ -16,19 +16,23 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.config;
 
-import java.util.Map;
 import javax.annotation.Nullable;
+
+import java.util.Map;
 
 /**
  * Reads the labels of a single Kubernetes node.
  */
 @FunctionalInterface
-interface NodeLabelReader {
-    /**
-     * Returns every label of the named node, or null if the labels could not be read.
-     */
-    @Nullable
-    Map<String, String> readLabels(String nodeName);
+interface NodeLabelReader
+{
+  /**
+   * Returns every label of the named node, or null if the labels could not be
+   * read.
+   */
+  @Nullable
+  Map<String, String> readLabels(String nodeName);
 }

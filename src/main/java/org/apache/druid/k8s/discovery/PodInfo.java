@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -24,30 +25,35 @@ import com.google.inject.Inject;
 import org.apache.druid.guice.LazySingleton;
 
 @LazySingleton
-public class PodInfo {
-    private final String podName;
-    private final String podNamespace;
+public class PodInfo
+{
+  private final String podName;
+  private final String podNamespace;
 
-    @Inject
-    public PodInfo(K8sDiscoveryConfig discoveryConfig) {
-        this.podName = System.getenv(discoveryConfig.getPodNameEnvKey());
-        Preconditions.checkState(podName != null && !podName.isEmpty(), "Failed to find podName");
+  @Inject
+  public PodInfo(K8sDiscoveryConfig discoveryConfig)
+  {
+    this.podName = System.getenv(discoveryConfig.getPodNameEnvKey());
+    Preconditions.checkState(podName != null && !podName.isEmpty(), "Failed to find podName");
 
-        this.podNamespace = System.getenv(discoveryConfig.getPodNamespaceEnvKey());
-        Preconditions.checkState(podNamespace != null && !podNamespace.isEmpty(), "Failed to find podNamespace");
-    }
+    this.podNamespace = System.getenv(discoveryConfig.getPodNamespaceEnvKey());
+    Preconditions.checkState(podNamespace != null && !podNamespace.isEmpty(), "Failed to find podNamespace");
+  }
 
-    @VisibleForTesting
-    public PodInfo(String podName, String podNamespace) {
-        this.podName = podName;
-        this.podNamespace = podNamespace;
-    }
+  @VisibleForTesting
+  public PodInfo(String podName, String podNamespace)
+  {
+    this.podName = podName;
+    this.podNamespace = podNamespace;
+  }
 
-    public String getPodName() {
-        return podName;
-    }
+  public String getPodName()
+  {
+    return podName;
+  }
 
-    public String getPodNamespace() {
-        return podNamespace;
-    }
+  public String getPodNamespace()
+  {
+    return podNamespace;
+  }
 }

@@ -16,12 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import java.io.IOException;
 
-public class ChannelResetException extends IOException {
-    public ChannelResetException(Throwable ex) {
-        super(ex);
-    }
+public class ChannelResetException extends IOException
+{
+  public ChannelResetException(Throwable ex)
+  {
+    super(ex);
+  }
 }

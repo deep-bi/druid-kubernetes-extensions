@@ -16,20 +16,23 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import io.kubernetes.client.extended.leaderelection.LeaderElector;
 
 /**
- * Interface to abstract creation/use of {@link LeaderElector} from k8s-client java lib to allow unit tests with
- * mock impl.
+ * Interface to abstract creation/use of {@link LeaderElector} from k8s-client
+ * java lib to allow unit tests with mock impl.
  */
-public interface K8sLeaderElectorFactory {
-    K8sLeaderElector create(String candidateId, String namespace, String lockResourceName);
+public interface K8sLeaderElectorFactory
+{
+  K8sLeaderElector create(String candidateId, String namespace, String lockResourceName);
 }
 
-interface K8sLeaderElector {
-    String getCurrentLeader();
+interface K8sLeaderElector
+{
+  String getCurrentLeader();
 
-    void run(Runnable startLeadingHook, Runnable stopLeadingHook);
+  void run(Runnable startLeadingHook, Runnable stopLeadingHook);
 }
