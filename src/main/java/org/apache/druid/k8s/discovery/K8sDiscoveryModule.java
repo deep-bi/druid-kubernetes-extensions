@@ -19,12 +19,14 @@
 package org.apache.druid.k8s.discovery;
 
 import com.fasterxml.jackson.databind.Module;
+import com.fasterxml.jackson.databind.jsontype.NamedType;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Binder;
 import com.google.inject.Key;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.util.Config;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.List;
 import org.apache.druid.client.coordinator.Coordinator;
 import org.apache.druid.client.indexing.IndexingService;
@@ -35,13 +37,15 @@ import org.apache.druid.guice.JsonConfigProvider;
 import org.apache.druid.guice.LazySingleton;
 import org.apache.druid.guice.PolyBind;
 import org.apache.druid.initialization.DruidModule;
+import org.apache.druid.k8s.config.K8sNodeLabelDynamicConfigProvider;
 
 public class K8sDiscoveryModule implements DruidModule {
     private static final String K8S_KEY = "k8s";
 
     @Override
     public List<? extends Module> getJacksonModules() {
-        return Collections.emptyList();
+        return ImmutableList.of(new SimpleModule("K8sDynamicConfigProviderModule")
+                .registerSubtypes(new NamedType(K8sNodeLabelDynamicConfigProvider.class, "k8sNodeLabel")));
     }
 
     @Override
