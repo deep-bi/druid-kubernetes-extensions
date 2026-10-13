@@ -23,21 +23,23 @@ import io.kubernetes.client.util.Config;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import org.apache.druid.discovery.DiscoveryDruidNode;
 import org.apache.druid.discovery.DruidNodeDiscovery;
 import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.jackson.DefaultObjectMapper;
 import org.apache.druid.server.DruidNode;
-import org.junit.Assert;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 /**
  * This is not a UT, but very helpful when making changes to ensure things work with real K8S Api Server.
  * It is ignored in the build but checked in the reporitory for running manually by devs.
  */
-@Ignore("Needs K8S API Server")
+@Disabled("Needs K8S API Server")
 public class K8sAnnouncerAndDiscoveryIntTest {
     private final DiscoveryDruidNode testNode = new DiscoveryDruidNode(
             new DruidNode("druid/router", "test-host", true, 80, null, true, false), NodeRole.ROUTER, null);
@@ -49,7 +51,8 @@ public class K8sAnnouncerAndDiscoveryIntTest {
     private final K8sDiscoveryConfig discoveryConfig =
             new K8sDiscoveryConfig("druid-cluster", null, null, null, null, null, null, null);
 
-    @Test(timeout = 30000L)
+    @Test
+    @Timeout(value = 30000, unit = TimeUnit.MILLISECONDS)
     public void testAnnouncementAndDiscoveryWorkflow() throws Exception {
         K8sApiClient k8sApiClient = new DefaultK8sApiClient(Config.defaultClient(), new DefaultObjectMapper());
 
@@ -58,7 +61,7 @@ public class K8sAnnouncerAndDiscoveryIntTest {
         discoveryProvider.start();
 
         BooleanSupplier nodeInquirer = discoveryProvider.getForNode(testNode.getDruidNode(), NodeRole.ROUTER);
-        Assert.assertFalse(nodeInquirer.getAsBoolean());
+        Assertions.assertFalse(nodeInquirer.getAsBoolean());
 
         DruidNodeDiscovery discovery = discoveryProvider.getForNodeRole(NodeRole.ROUTER);
 
@@ -107,13 +110,13 @@ public class K8sAnnouncerAndDiscoveryIntTest {
 
         nodeAppeared.await();
 
-        Assert.assertTrue(nodeInquirer.getAsBoolean());
+        Assertions.assertTrue(nodeInquirer.getAsBoolean());
 
         announcer.unannounce(testNode);
 
         nodeDisappeared.await();
 
-        Assert.assertFalse(nodeInquirer.getAsBoolean());
+        Assertions.assertFalse(nodeInquirer.getAsBoolean());
 
         discoveryProvider.stop();
     }

@@ -30,7 +30,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
-import okhttp3.internal.http2.StreamResetException;
 import org.apache.druid.concurrent.LifecycleLock;
 import org.apache.druid.discovery.BaseNodeRoleWatcher;
 import org.apache.druid.discovery.DiscoveryDruidNode;
@@ -224,7 +223,6 @@ public class K8sDruidNodeDiscoveryProvider extends DruidNodeDiscoveryProvider {
 
         private void keepWatching(String labelSelector, String resourceVersion) {
             String nextResourceVersion = resourceVersion;
-
             while (lifecycleLock.awaitStarted(1, TimeUnit.MILLISECONDS)) {
 
                 try (WatchResult iter = k8sApiClient.watchPods(
@@ -248,7 +246,14 @@ public class K8sDruidNodeDiscoveryProvider extends DruidNodeDiscoveryProvider {
                                 baseNodeRoleWatcher.childAdded(item.object.getNode());
                                 break;
                             case WatchResult.DELETED:
-                                baseNodeRoleWatcher.childRemoved(item.object.getNode());
+                            case WatchResult.NOT_READY:
+                                // Use skipIfUnknown=true for all k8s discovery removals.
+                                // DELETED can fire after NOT_READY (so the service is already removed), or
+                                // before ADDED (pod deleted before becoming ready).
+                                // NOT_READY can repeat during CrashLoopBackOff. None of these warrant the
+                                // error-level logging that
+                                // comes with trying to remove an unknown service.
+                                baseNodeRoleWatcher.childRemoved(item.object.getNode(), true);
                                 break;
                             default:
                         }
@@ -259,8 +264,12 @@ public class K8sDruidNodeDiscoveryProvider extends DruidNodeDiscoveryProvider {
 
                     LOGGER.trace("Watch closed normally for role[%s]", this.nodeRole);
                     return;
-                } catch (StreamResetException ex) {
+                } catch (ChannelResetException ex) {
                     LOGGER.debug("Watch stream terminated normally for role[%s], restarting", this.nodeRole);
+                    // Apply the same backoff as other retry paths below: a persistently reset stream
+                    // (flaky proxy, LB idle timeout shorter than expected) would otherwise cause an
+                    // unbounded relist/watch loop against the API server.
+                    sleep(watcherErrorRetryWaitMS);
                     return;
                 } catch (SocketTimeoutException ex) {
                     // socket read timeout can happen normally due to k8s not having anything new to push leading to

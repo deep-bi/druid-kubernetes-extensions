@@ -21,8 +21,8 @@ package org.apache.druid.k8s.discovery;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.druid.jackson.DefaultObjectMapper;
 import org.joda.time.Duration;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 public class K8sDiscoveryConfigTest {
     private final ObjectMapper jsonMapper = new DefaultObjectMapper();
@@ -63,6 +63,6 @@ public class K8sDiscoveryConfigTest {
                 jsonMapper.writeValueAsString(jsonMapper.readValue(jsonStr, K8sDiscoveryConfig.class)),
                 K8sDiscoveryConfig.class);
 
-        Assert.assertEquals(expected, actual);
+        Assertions.assertEquals(expected, actual);
     }
 }

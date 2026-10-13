@@ -22,12 +22,14 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import io.kubernetes.client.util.Watch;
+import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import org.apache.druid.discovery.DiscoveryDruidNode;
 import org.apache.druid.discovery.DruidNodeDiscovery;
 import org.apache.druid.discovery.NodeRole;
@@ -35,8 +37,9 @@ import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.server.DruidNode;
 import org.easymock.EasyMock;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 public class K8sDruidNodeDiscoveryProviderTest {
     private static final Logger LOGGER = new Logger(K8sDruidNodeDiscoveryProviderTest.class);
@@ -61,7 +64,8 @@ public class K8sDruidNodeDiscoveryProviderTest {
     private final K8sDiscoveryConfig discoveryConfig =
             new K8sDiscoveryConfig("druid-cluster", null, null, null, null, null, null, null);
 
-    @Test(timeout = 60_000)
+    @Test
+    @Timeout(value = 60_000, unit = TimeUnit.MILLISECONDS)
     public void testGetForNodeRole() throws Exception {
         String labelSelector =
                 "druidDiscoveryAnnouncement-cluster-identifier=druid-cluster,druidDiscoveryAnnouncement-router=true";
@@ -130,7 +134,8 @@ public class K8sDruidNodeDiscoveryProviderTest {
         discoveryProvider.stop();
     }
 
-    @Test(timeout = 10_000)
+    @Test
+    @Timeout(value = 10_000, unit = TimeUnit.MILLISECONDS)
     public void testNodeRoleWatcherHandlesNullFromAPIByRestarting() throws Exception {
         String labelSelector =
                 "druidDiscoveryAnnouncement-cluster-identifier=druid-cluster,druidDiscoveryAnnouncement-router=true";
@@ -174,7 +179,120 @@ public class K8sDruidNodeDiscoveryProviderTest {
         discoveryProvider.stop();
     }
 
-    @Test(timeout = 10_000)
+    @Test
+    @Timeout(value = 60_000, unit = TimeUnit.MILLISECONDS)
+    public void testNotReadyEventRemovesNodeAndReAddOnReady() throws Exception {
+        String labelSelector =
+                "druidDiscoveryAnnouncement-cluster-identifier=druid-cluster,druidDiscoveryAnnouncement-router=true";
+        K8sApiClient mockK8sApiClient = EasyMock.createMock(K8sApiClient.class);
+
+        // Initial list returns two healthy nodes
+        EasyMock.expect(mockK8sApiClient.listPods(podInfo.getPodNamespace(), labelSelector, NodeRole.ROUTER))
+                .andReturn(new DiscoveryDruidNodeList(
+                        "v1",
+                        ImmutableMap.of(
+                                testNode1.getDruidNode().getHostAndPortToUse(), testNode1,
+                                testNode2.getDruidNode().getHostAndPortToUse(), testNode2)));
+
+        // Watch returns: testNode1 becomes NOT_READY (OOM), then comes back as ADDED (recovered)
+        EasyMock.expect(mockK8sApiClient.watchPods(podInfo.getPodNamespace(), labelSelector, "v1", NodeRole.ROUTER))
+                .andReturn(new MockWatchResult(
+                        ImmutableList.of(
+                                new Watch.Response<>(
+                                        WatchResult.NOT_READY,
+                                        new DiscoveryDruidNodeAndResourceVersion("v2", testNode1)),
+                                // Repeated NOT_READY during CrashLoopBackOff — should be silently ignored
+                                new Watch.Response<>(
+                                        WatchResult.NOT_READY,
+                                        new DiscoveryDruidNodeAndResourceVersion("v3", testNode1)),
+                                // Pod recovers and becomes ready again
+                                new Watch.Response<>(
+                                        WatchResult.ADDED, new DiscoveryDruidNodeAndResourceVersion("v4", testNode1))),
+                        false,
+                        false));
+        EasyMock.replay(mockK8sApiClient);
+
+        K8sDruidNodeDiscoveryProvider discoveryProvider =
+                new K8sDruidNodeDiscoveryProvider(podInfo, discoveryConfig, mockK8sApiClient, 1);
+        discoveryProvider.start();
+
+        K8sDruidNodeDiscoveryProvider.NodeRoleWatcher nodeDiscovery =
+                discoveryProvider.getForNodeRole(NodeRole.ROUTER, false);
+
+        MockListener testListener = new MockListener(ImmutableList.of(
+                MockListener.Event.added(testNode1),
+                MockListener.Event.added(testNode2),
+                MockListener.Event.inited(),
+                // testNode1 goes NOT_READY — removed
+                MockListener.Event.deleted(testNode1),
+                // Second NOT_READY is silently skipped (not in cache)
+                // testNode1 recovers — re-added
+                MockListener.Event.added(testNode1)));
+        nodeDiscovery.registerListener(testListener);
+
+        nodeDiscovery.start();
+
+        testListener.assertSuccess();
+
+        discoveryProvider.stop();
+    }
+
+    @Test
+    @Timeout(value = 60_000, unit = TimeUnit.MILLISECONDS)
+    public void testDeletedAfterNotReadyIssilentlyIgnored() throws Exception {
+        String labelSelector =
+                "druidDiscoveryAnnouncement-cluster-identifier=druid-cluster,druidDiscoveryAnnouncement-router=true";
+        K8sApiClient mockK8sApiClient = EasyMock.createMock(K8sApiClient.class);
+
+        // Initial list returns two healthy nodes
+        EasyMock.expect(mockK8sApiClient.listPods(podInfo.getPodNamespace(), labelSelector, NodeRole.ROUTER))
+                .andReturn(new DiscoveryDruidNodeList(
+                        "v1",
+                        ImmutableMap.of(
+                                testNode1.getDruidNode().getHostAndPortToUse(), testNode1,
+                                testNode2.getDruidNode().getHostAndPortToUse(), testNode2)));
+
+        // Watch: testNode1 goes NOT_READY, then DELETED arrives (node already removed from cache)
+        EasyMock.expect(mockK8sApiClient.watchPods(podInfo.getPodNamespace(), labelSelector, "v1", NodeRole.ROUTER))
+                .andReturn(new MockWatchResult(
+                        ImmutableList.of(
+                                new Watch.Response<>(
+                                        WatchResult.NOT_READY,
+                                        new DiscoveryDruidNodeAndResourceVersion("v2", testNode1)),
+                                // DELETED after NOT_READY — node already removed, should be silently skipped
+                                new Watch.Response<>(
+                                        WatchResult.DELETED,
+                                        new DiscoveryDruidNodeAndResourceVersion("v3", testNode1))),
+                        false,
+                        false));
+        EasyMock.replay(mockK8sApiClient);
+
+        K8sDruidNodeDiscoveryProvider discoveryProvider =
+                new K8sDruidNodeDiscoveryProvider(podInfo, discoveryConfig, mockK8sApiClient, 1);
+        discoveryProvider.start();
+
+        K8sDruidNodeDiscoveryProvider.NodeRoleWatcher nodeDiscovery =
+                discoveryProvider.getForNodeRole(NodeRole.ROUTER, false);
+
+        MockListener testListener = new MockListener(ImmutableList.of(
+                MockListener.Event.added(testNode1),
+                MockListener.Event.added(testNode2),
+                MockListener.Event.inited(),
+                // testNode1 goes NOT_READY — removed
+                MockListener.Event.deleted(testNode1)
+                // DELETED is silently skipped (not in cache) — no second deleted event
+                ));
+        nodeDiscovery.registerListener(testListener);
+
+        nodeDiscovery.start();
+
+        testListener.assertSuccess();
+
+        discoveryProvider.stop();
+    }
+
+    @Test
+    @Timeout(value = 10_000, unit = TimeUnit.MILLISECONDS)
     public void testNodeRoleWatcherLoopOnNullItems() throws Exception {
         String labelSelector =
                 "druidDiscoveryAnnouncement-cluster-identifier=druid-cluster,druidDiscoveryAnnouncement-router=true";
@@ -185,8 +303,7 @@ public class K8sDruidNodeDiscoveryProviderTest {
                         ImmutableMap.of(
                                 testNode1.getDruidNode().getHostAndPortToUse(), testNode1,
                                 testNode2.getDruidNode().getHostAndPortToUse(), testNode2)));
-        List<Watch.Response<DiscoveryDruidNodeAndResourceVersion>> nullList =
-                new ArrayList<Watch.Response<DiscoveryDruidNodeAndResourceVersion>>();
+        List<Watch.Response<DiscoveryDruidNodeAndResourceVersion>> nullList = new ArrayList<>();
         nullList.add(null);
         EasyMock.expect(mockK8sApiClient.watchPods(podInfo.getPodNamespace(), labelSelector, "v1", NodeRole.ROUTER))
                 .andReturn(new MockWatchResult(nullList, false, false));
@@ -220,6 +337,104 @@ public class K8sDruidNodeDiscoveryProviderTest {
         testListener.assertSuccess();
 
         discoveryProvider.stop();
+    }
+
+    @Test
+    @Timeout(value = 10_000, unit = TimeUnit.MILLISECONDS)
+    public void testNodeRoleWatcherHandlesChannelResetException() throws Exception {
+        String labelSelector =
+                "druidDiscoveryAnnouncement-cluster-identifier=druid-cluster,druidDiscoveryAnnouncement-router=true";
+        K8sApiClient mockK8sApiClient = EasyMock.createMock(K8sApiClient.class);
+
+        EasyMock.expect(mockK8sApiClient.listPods(podInfo.getPodNamespace(), labelSelector, NodeRole.ROUTER))
+                .andReturn(new DiscoveryDruidNodeList(
+                        "v1",
+                        ImmutableMap.of(
+                                testNode1.getDruidNode().getHostAndPortToUse(), testNode1,
+                                testNode2.getDruidNode().getHostAndPortToUse(), testNode2)));
+
+        EasyMock.expect(mockK8sApiClient.watchPods(podInfo.getPodNamespace(), labelSelector, "v1", NodeRole.ROUTER))
+                .andReturn(new MockWatchResult(Collections.emptyList(), false, false, true));
+
+        EasyMock.expect(mockK8sApiClient.listPods(podInfo.getPodNamespace(), labelSelector, NodeRole.ROUTER))
+                .andReturn(new DiscoveryDruidNodeList(
+                        "v2",
+                        ImmutableMap.of(
+                                testNode2.getDruidNode().getHostAndPortToUse(), testNode2,
+                                testNode3.getDruidNode().getHostAndPortToUse(), testNode3)));
+
+        EasyMock.expect(mockK8sApiClient.watchPods(podInfo.getPodNamespace(), labelSelector, "v2", NodeRole.ROUTER))
+                .andReturn(new MockWatchResult(Collections.emptyList(), false, false));
+
+        EasyMock.replay(mockK8sApiClient);
+
+        K8sDruidNodeDiscoveryProvider discoveryProvider =
+                new K8sDruidNodeDiscoveryProvider(podInfo, discoveryConfig, mockK8sApiClient, 1);
+        discoveryProvider.start();
+
+        K8sDruidNodeDiscoveryProvider.NodeRoleWatcher nodeDiscovery =
+                discoveryProvider.getForNodeRole(NodeRole.ROUTER, false);
+
+        MockListener testListener = new MockListener(ImmutableList.of(
+                MockListener.Event.added(testNode1),
+                MockListener.Event.added(testNode2),
+                MockListener.Event.inited(),
+                MockListener.Event.added(testNode3),
+                MockListener.Event.deleted(testNode1)));
+        nodeDiscovery.registerListener(testListener);
+        nodeDiscovery.start();
+        testListener.assertSuccess();
+        discoveryProvider.stop();
+    }
+
+    @Test
+    @Timeout(value = 10_000, unit = TimeUnit.MILLISECONDS)
+    public void testPersistentChannelResetAppliesBackoffBetweenRelists() throws Exception {
+        String labelSelector =
+                "druidDiscoveryAnnouncement-cluster-identifier=druid-cluster,druidDiscoveryAnnouncement-router=true";
+        K8sApiClient mockK8sApiClient = EasyMock.createMock(K8sApiClient.class);
+
+        // Three consecutive watch attempts are immediately reset, followed by a clean one. Without
+        // backoff on the ChannelResetException path, these three relist/watch cycles would complete
+        // almost instantly; with backoff, each reset costs watcherErrorRetryWaitMS.
+        for (int i = 0; i < 3; i++) {
+            EasyMock.expect(mockK8sApiClient.listPods(podInfo.getPodNamespace(), labelSelector, NodeRole.ROUTER))
+                    .andReturn(new DiscoveryDruidNodeList("v1", ImmutableMap.of()));
+            EasyMock.expect(mockK8sApiClient.watchPods(podInfo.getPodNamespace(), labelSelector, "v1", NodeRole.ROUTER))
+                    .andReturn(new MockWatchResult(Collections.emptyList(), false, false, true));
+        }
+
+        EasyMock.expect(mockK8sApiClient.listPods(podInfo.getPodNamespace(), labelSelector, NodeRole.ROUTER))
+                .andReturn(new DiscoveryDruidNodeList(
+                        "v2", ImmutableMap.of(testNode1.getDruidNode().getHostAndPortToUse(), testNode1)));
+        EasyMock.expect(mockK8sApiClient.watchPods(podInfo.getPodNamespace(), labelSelector, "v2", NodeRole.ROUTER))
+                .andReturn(new MockWatchResult(Collections.emptyList(), false, false));
+
+        EasyMock.replay(mockK8sApiClient);
+
+        long watcherErrorRetryWaitMS = 1500;
+        K8sDruidNodeDiscoveryProvider discoveryProvider =
+                new K8sDruidNodeDiscoveryProvider(podInfo, discoveryConfig, mockK8sApiClient, watcherErrorRetryWaitMS);
+        discoveryProvider.start();
+
+        K8sDruidNodeDiscoveryProvider.NodeRoleWatcher nodeDiscovery =
+                discoveryProvider.getForNodeRole(NodeRole.ROUTER, false);
+
+        MockListener testListener =
+                new MockListener(ImmutableList.of(MockListener.Event.inited(), MockListener.Event.added(testNode1)));
+        nodeDiscovery.registerListener(testListener);
+
+        long start = System.currentTimeMillis();
+        nodeDiscovery.start();
+        testListener.assertSuccess();
+        long elapsed = System.currentTimeMillis() - start;
+
+        discoveryProvider.stop();
+
+        Assertions.assertTrue(
+                elapsed >= 3 * watcherErrorRetryWaitMS,
+                "Expected at least 3 backoff waits (" + (3 * watcherErrorRetryWaitMS) + "ms) for 3 persistent "
+                        + "channel resets, but only " + elapsed + "ms elapsed");
     }
 
     private static class MockListener implements DruidNodeDiscovery.Listener {
@@ -277,12 +492,12 @@ public class K8sDruidNodeDiscoveryProviderTest {
 
         public void assertSuccess() throws Exception {
             while (!events.isEmpty()) {
-                Assert.assertFalse(failReason, failed);
+                Assertions.assertFalse(failed, failReason);
                 LOGGER.info("Waiting  for events to finish.");
                 Thread.sleep(1000);
             }
 
-            Assert.assertFalse(failReason, failed);
+            Assertions.assertFalse(failed, failReason);
         }
 
         static class Event {
@@ -335,6 +550,7 @@ public class K8sDruidNodeDiscoveryProviderTest {
 
         private volatile boolean timeoutOnStart;
         private volatile boolean timeooutOnEmptyResults;
+        private volatile boolean channelResetOnStart;
         private volatile boolean closeCalled = false;
 
         public MockWatchResult(
@@ -346,10 +562,23 @@ public class K8sDruidNodeDiscoveryProviderTest {
             this.timeooutOnEmptyResults = timeooutOnEmptyResults;
         }
 
+        public MockWatchResult(
+                List<Watch.Response<DiscoveryDruidNodeAndResourceVersion>> results,
+                boolean timeoutOnStart,
+                boolean timeooutOnEmptyResults,
+                boolean channelResetOnStart) {
+            this(results, timeoutOnStart, timeooutOnEmptyResults);
+            this.channelResetOnStart = channelResetOnStart;
+        }
+
         @Override
-        public boolean hasNext() throws SocketTimeoutException {
+        public boolean hasNext() throws IOException {
             if (timeoutOnStart) {
                 throw new SocketTimeoutException("testing timeout on start!!!");
+            }
+
+            if (channelResetOnStart) {
+                throw new ChannelResetException(new RuntimeException("simulated StreamResetException"));
             }
 
             if (results.isEmpty()) {
@@ -379,7 +608,7 @@ public class K8sDruidNodeDiscoveryProviderTest {
         }
 
         public void assertSuccess() {
-            Assert.assertTrue("close() not called", closeCalled);
+            Assertions.assertTrue(closeCalled, "close() not called");
         }
     }
 }
