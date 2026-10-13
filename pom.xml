@@ -36,6 +36,7 @@
 
     <properties>
         <project.parent.basedir>${project.basedir}</project.parent.basedir>
+        <jackson.version>2.22.3</jackson.version>
     </properties>
 
     <organization>
