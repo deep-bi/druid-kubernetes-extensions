@@ -16,28 +16,35 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import com.google.common.base.Preconditions;
-import java.util.Collections;
-import java.util.Map;
-import javax.annotation.Nullable;
 import org.apache.druid.discovery.DiscoveryDruidNode;
 
-public class DiscoveryDruidNodeList {
-    private final String resourceVersion;
-    private final Map<String, DiscoveryDruidNode> druidNodes;
+import javax.annotation.Nullable;
 
-    public DiscoveryDruidNodeList(String resourceVersion, @Nullable Map<String, DiscoveryDruidNode> druidNodes) {
-        this.resourceVersion = Preconditions.checkNotNull(resourceVersion, "NULL resource version!");
-        this.druidNodes = druidNodes == null ? Collections.emptyMap() : druidNodes;
-    }
+import java.util.Collections;
+import java.util.Map;
 
-    public String getResourceVersion() {
-        return resourceVersion;
-    }
+public class DiscoveryDruidNodeList
+{
+  private final String resourceVersion;
+  private final Map<String, DiscoveryDruidNode> druidNodes;
 
-    public Map<String, DiscoveryDruidNode> getDruidNodes() {
-        return druidNodes;
-    }
+  public DiscoveryDruidNodeList(String resourceVersion, @Nullable Map<String, DiscoveryDruidNode> druidNodes)
+  {
+    this.resourceVersion = Preconditions.checkNotNull(resourceVersion, "NULL resource version!");
+    this.druidNodes = druidNodes == null ? Collections.emptyMap() : druidNodes;
+  }
+
+  public String getResourceVersion()
+  {
+    return resourceVersion;
+  }
+
+  public Map<String, DiscoveryDruidNode> getDruidNodes()
+  {
+    return druidNodes;
+  }
 }

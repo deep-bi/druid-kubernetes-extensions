@@ -16,16 +16,21 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import org.apache.druid.java.util.emitter.core.Event;
 import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 
-public class NoopServiceEmitter extends ServiceEmitter {
-    public NoopServiceEmitter() {
-        super("", "", null);
-    }
+public class NoopServiceEmitter extends ServiceEmitter
+{
+  public NoopServiceEmitter()
+  {
+    super("", "", null);
+  }
 
-    @Override
-    public void emit(Event event) {}
+  @Override
+  public void emit(Event event)
+  {
+  }
 }

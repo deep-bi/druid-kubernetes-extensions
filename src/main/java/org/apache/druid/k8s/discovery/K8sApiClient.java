@@ -16,20 +16,24 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import org.apache.druid.discovery.NodeRole;
 
 /**
- * Interface to abstract pod read/update with K8S API Server to allow unit tests with mock impl.
+ * Interface to abstract pod read/update with K8S API Server to allow unit tests
+ * with mock impl.
  */
-public interface K8sApiClient {
-    void patchPod(String podName, String namespace, String jsonPatchStr);
+public interface K8sApiClient
+{
+  void patchPod(String podName, String namespace, String jsonPatchStr);
 
-    DiscoveryDruidNodeList listPods(String namespace, String labelSelector, NodeRole nodeRole);
+  DiscoveryDruidNodeList listPods(String namespace, String labelSelector, NodeRole nodeRole);
 
-    /**
-     * @return NULL if history not available or else return the {@link WatchResult} object
-     */
-    WatchResult watchPods(String namespace, String labelSelector, String lastKnownResourceVersion, NodeRole nodeRole);
+  /**
+   * @return NULL if history not available or else return the {@link WatchResult}
+   *         object
+   */
+  WatchResult watchPods(String namespace, String labelSelector, String lastKnownResourceVersion, NodeRole nodeRole);
 }

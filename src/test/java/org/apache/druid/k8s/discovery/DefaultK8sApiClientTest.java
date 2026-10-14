@@ -16,82 +16,92 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import io.kubernetes.client.openapi.models.V1ContainerStatus;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodStatus;
-import java.util.Arrays;
-import java.util.Collections;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-public class DefaultK8sApiClientTest {
-    @Test
-    public void testIsPodReady_nullStatus() {
-        V1Pod pod = new V1Pod();
-        Assertions.assertFalse(DefaultK8sApiClient.isPodReady(pod));
-    }
+import java.util.Arrays;
+import java.util.Collections;
 
-    @Test
-    public void testIsPodReady_nullContainerStatuses() {
-        V1Pod pod = new V1Pod();
-        pod.setStatus(new V1PodStatus());
-        Assertions.assertFalse(DefaultK8sApiClient.isPodReady(pod));
-    }
+public class DefaultK8sApiClientTest
+{
+  @Test
+  public void testIsPodReady_nullStatus()
+  {
+    V1Pod pod = new V1Pod();
+    Assertions.assertFalse(DefaultK8sApiClient.isPodReady(pod));
+  }
 
-    @Test
-    public void testIsPodReady_emptyContainerStatuses() {
-        V1Pod pod = new V1Pod();
-        V1PodStatus status = new V1PodStatus();
-        status.setContainerStatuses(Collections.emptyList());
-        pod.setStatus(status);
-        Assertions.assertFalse(DefaultK8sApiClient.isPodReady(pod));
-    }
+  @Test
+  public void testIsPodReady_nullContainerStatuses()
+  {
+    V1Pod pod = new V1Pod();
+    pod.setStatus(new V1PodStatus());
+    Assertions.assertFalse(DefaultK8sApiClient.isPodReady(pod));
+  }
 
-    @Test
-    public void testIsPodReady_allContainersReady() {
-        V1Pod pod = new V1Pod();
-        V1PodStatus status = new V1PodStatus();
-        V1ContainerStatus cs = new V1ContainerStatus();
-        cs.setReady(true);
-        status.setContainerStatuses(Collections.singletonList(cs));
-        pod.setStatus(status);
-        Assertions.assertTrue(DefaultK8sApiClient.isPodReady(pod));
-    }
+  @Test
+  public void testIsPodReady_emptyContainerStatuses()
+  {
+    V1Pod pod = new V1Pod();
+    V1PodStatus status = new V1PodStatus();
+    status.setContainerStatuses(Collections.emptyList());
+    pod.setStatus(status);
+    Assertions.assertFalse(DefaultK8sApiClient.isPodReady(pod));
+  }
 
-    @Test
-    public void testIsPodReady_containerNotReady() {
-        V1Pod pod = new V1Pod();
-        V1PodStatus status = new V1PodStatus();
-        V1ContainerStatus cs = new V1ContainerStatus();
-        cs.setReady(false);
-        status.setContainerStatuses(Collections.singletonList(cs));
-        pod.setStatus(status);
-        Assertions.assertFalse(DefaultK8sApiClient.isPodReady(pod));
-    }
+  @Test
+  public void testIsPodReady_allContainersReady()
+  {
+    V1Pod pod = new V1Pod();
+    V1PodStatus status = new V1PodStatus();
+    V1ContainerStatus cs = new V1ContainerStatus();
+    cs.setReady(true);
+    status.setContainerStatuses(Collections.singletonList(cs));
+    pod.setStatus(status);
+    Assertions.assertTrue(DefaultK8sApiClient.isPodReady(pod));
+  }
 
-    @Test
-    public void testIsPodReady_mixedContainerReadiness() {
-        V1Pod pod = new V1Pod();
-        V1PodStatus status = new V1PodStatus();
-        V1ContainerStatus cs1 = new V1ContainerStatus();
-        cs1.setReady(true);
-        V1ContainerStatus cs2 = new V1ContainerStatus();
-        cs2.setReady(false);
-        status.setContainerStatuses(Arrays.asList(cs1, cs2));
-        pod.setStatus(status);
-        Assertions.assertFalse(DefaultK8sApiClient.isPodReady(pod));
-    }
+  @Test
+  public void testIsPodReady_containerNotReady()
+  {
+    V1Pod pod = new V1Pod();
+    V1PodStatus status = new V1PodStatus();
+    V1ContainerStatus cs = new V1ContainerStatus();
+    cs.setReady(false);
+    status.setContainerStatuses(Collections.singletonList(cs));
+    pod.setStatus(status);
+    Assertions.assertFalse(DefaultK8sApiClient.isPodReady(pod));
+  }
 
-    @Test
-    public void testIsPodReady_containerReadyNull() {
-        V1Pod pod = new V1Pod();
-        V1PodStatus status = new V1PodStatus();
-        V1ContainerStatus cs = new V1ContainerStatus();
-        // ready is null (not set)
-        status.setContainerStatuses(Collections.singletonList(cs));
-        pod.setStatus(status);
-        Assertions.assertFalse(DefaultK8sApiClient.isPodReady(pod));
-    }
+  @Test
+  public void testIsPodReady_mixedContainerReadiness()
+  {
+    V1Pod pod = new V1Pod();
+    V1PodStatus status = new V1PodStatus();
+    V1ContainerStatus cs1 = new V1ContainerStatus();
+    cs1.setReady(true);
+    V1ContainerStatus cs2 = new V1ContainerStatus();
+    cs2.setReady(false);
+    status.setContainerStatuses(Arrays.asList(cs1, cs2));
+    pod.setStatus(status);
+    Assertions.assertFalse(DefaultK8sApiClient.isPodReady(pod));
+  }
+
+  @Test
+  public void testIsPodReady_containerReadyNull()
+  {
+    V1Pod pod = new V1Pod();
+    V1PodStatus status = new V1PodStatus();
+    V1ContainerStatus cs = new V1ContainerStatus();
+    // ready is null (not set)
+    status.setContainerStatuses(Collections.singletonList(cs));
+    pod.setStatus(status);
+    Assertions.assertFalse(DefaultK8sApiClient.isPodReady(pod));
+  }
 }

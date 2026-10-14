@@ -16,15 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kubernetes.client.util.Config;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 import org.apache.druid.discovery.DiscoveryDruidNode;
 import org.apache.druid.discovery.DruidNodeDiscovery;
 import org.apache.druid.discovery.NodeRole;
@@ -35,89 +31,114 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
+
 /**
- * This is not a UT, but very helpful when making changes to ensure things work with real K8S Api Server.
- * It is ignored in the build but checked in the reporitory for running manually by devs.
+ * This is not a UT, but very helpful when making changes to ensure things work
+ * with real K8S Api Server. It is ignored in the build but checked in the
+ * reporitory for running manually by devs.
  */
 @Disabled("Needs K8S API Server")
-public class K8sAnnouncerAndDiscoveryIntTest {
-    private final DiscoveryDruidNode testNode = new DiscoveryDruidNode(
-            new DruidNode("druid/router", "test-host", true, 80, null, true, false), NodeRole.ROUTER, null);
+public class K8sAnnouncerAndDiscoveryIntTest
+{
+  private final DiscoveryDruidNode testNode = new DiscoveryDruidNode(
+      new DruidNode("druid/router", "test-host", true, 80, null, true, false),
+      NodeRole.ROUTER,
+      null);
 
-    private final ObjectMapper jsonMapper = new DefaultObjectMapper();
+  private final ObjectMapper jsonMapper = new DefaultObjectMapper();
 
-    private final PodInfo podInfo = new PodInfo("busybox", "default");
+  private final PodInfo podInfo = new PodInfo("busybox", "default");
 
-    private final K8sDiscoveryConfig discoveryConfig =
-            new K8sDiscoveryConfig("druid-cluster", null, null, null, null, null, null, null);
+  private final K8sDiscoveryConfig discoveryConfig = new K8sDiscoveryConfig(
+      "druid-cluster",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null);
 
-    @Test
-    @Timeout(value = 30000, unit = TimeUnit.MILLISECONDS)
-    public void testAnnouncementAndDiscoveryWorkflow() throws Exception {
-        K8sApiClient k8sApiClient = new DefaultK8sApiClient(Config.defaultClient(), new DefaultObjectMapper());
+  @Test
+  @Timeout(value = 30000, unit = TimeUnit.MILLISECONDS)
+  public void testAnnouncementAndDiscoveryWorkflow() throws Exception
+  {
+    K8sApiClient k8sApiClient = new DefaultK8sApiClient(Config.defaultClient(), new DefaultObjectMapper());
 
-        K8sDruidNodeDiscoveryProvider discoveryProvider =
-                new K8sDruidNodeDiscoveryProvider(podInfo, discoveryConfig, k8sApiClient);
-        discoveryProvider.start();
+    K8sDruidNodeDiscoveryProvider discoveryProvider = new K8sDruidNodeDiscoveryProvider(
+        podInfo,
+        discoveryConfig,
+        k8sApiClient);
+    discoveryProvider.start();
 
-        BooleanSupplier nodeInquirer = discoveryProvider.getForNode(testNode.getDruidNode(), NodeRole.ROUTER);
-        Assertions.assertFalse(nodeInquirer.getAsBoolean());
+    BooleanSupplier nodeInquirer = discoveryProvider.getForNode(testNode.getDruidNode(), NodeRole.ROUTER);
+    Assertions.assertFalse(nodeInquirer.getAsBoolean());
 
-        DruidNodeDiscovery discovery = discoveryProvider.getForNodeRole(NodeRole.ROUTER);
+    DruidNodeDiscovery discovery = discoveryProvider.getForNodeRole(NodeRole.ROUTER);
 
-        CountDownLatch nodeViewInitialized = new CountDownLatch(1);
-        CountDownLatch nodeAppeared = new CountDownLatch(1);
-        CountDownLatch nodeDisappeared = new CountDownLatch(1);
+    CountDownLatch nodeViewInitialized = new CountDownLatch(1);
+    CountDownLatch nodeAppeared = new CountDownLatch(1);
+    CountDownLatch nodeDisappeared = new CountDownLatch(1);
 
-        discovery.registerListener(new DruidNodeDiscovery.Listener() {
-            @Override
-            public void nodesAdded(Collection<DiscoveryDruidNode> nodes) {
-                Iterator<DiscoveryDruidNode> iter = nodes.iterator();
-                if (iter.hasNext()
-                        && testNode.getDruidNode()
-                                .getHostAndPort()
-                                .equals(iter.next().getDruidNode().getHostAndPort())) {
-                    nodeAppeared.countDown();
-                }
-            }
+    discovery.registerListener(new DruidNodeDiscovery.Listener()
+    {
+      @Override
+      public void nodesAdded(Collection<DiscoveryDruidNode> nodes)
+      {
+        Iterator<DiscoveryDruidNode> iter = nodes.iterator();
+        if (iter.hasNext()
+            && testNode.getDruidNode()
+                .getHostAndPort()
+                .equals(iter.next().getDruidNode().getHostAndPort())) {
+          nodeAppeared.countDown();
+        }
+      }
 
-            @Override
-            public void nodesRemoved(Collection<DiscoveryDruidNode> nodes) {
-                Iterator<DiscoveryDruidNode> iter = nodes.iterator();
-                if (iter.hasNext()
-                        && testNode.getDruidNode()
-                                .getHostAndPort()
-                                .equals(iter.next().getDruidNode().getHostAndPort())) {
-                    nodeDisappeared.countDown();
-                }
-            }
+      @Override
+      public void nodesRemoved(Collection<DiscoveryDruidNode> nodes)
+      {
+        Iterator<DiscoveryDruidNode> iter = nodes.iterator();
+        if (iter.hasNext()
+            && testNode.getDruidNode()
+                .getHostAndPort()
+                .equals(iter.next().getDruidNode().getHostAndPort())) {
+          nodeDisappeared.countDown();
+        }
+      }
 
-            @Override
-            public void nodeViewInitialized() {
-                nodeViewInitialized.countDown();
-            }
+      @Override
+      public void nodeViewInitialized()
+      {
+        nodeViewInitialized.countDown();
+      }
 
-            @Override
-            public void nodeViewInitializedTimedOut() {
-                nodeViewInitialized();
-            }
-        });
+      @Override
+      public void nodeViewInitializedTimedOut()
+      {
+        nodeViewInitialized();
+      }
+    });
 
-        nodeViewInitialized.await();
+    nodeViewInitialized.await();
 
-        K8sDruidNodeAnnouncer announcer = new K8sDruidNodeAnnouncer(podInfo, discoveryConfig, k8sApiClient, jsonMapper);
-        announcer.announce(testNode);
+    K8sDruidNodeAnnouncer announcer = new K8sDruidNodeAnnouncer(podInfo, discoveryConfig, k8sApiClient, jsonMapper);
+    announcer.announce(testNode);
 
-        nodeAppeared.await();
+    nodeAppeared.await();
 
-        Assertions.assertTrue(nodeInquirer.getAsBoolean());
+    Assertions.assertTrue(nodeInquirer.getAsBoolean());
 
-        announcer.unannounce(testNode);
+    announcer.unannounce(testNode);
 
-        nodeDisappeared.await();
+    nodeDisappeared.await();
 
-        Assertions.assertFalse(nodeInquirer.getAsBoolean());
+    Assertions.assertFalse(nodeInquirer.getAsBoolean());
 
-        discoveryProvider.stop();
-    }
+    discoveryProvider.stop();
+  }
 }

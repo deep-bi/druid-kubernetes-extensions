@@ -16,24 +16,29 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import org.apache.druid.discovery.DiscoveryDruidNode;
 
-public class DiscoveryDruidNodeAndResourceVersion {
-    private final String resourceVersion;
-    private final DiscoveryDruidNode node;
+public class DiscoveryDruidNodeAndResourceVersion
+{
+  private final String resourceVersion;
+  private final DiscoveryDruidNode node;
 
-    public DiscoveryDruidNodeAndResourceVersion(String resourceVersion, DiscoveryDruidNode node) {
-        this.resourceVersion = resourceVersion;
-        this.node = node;
-    }
+  public DiscoveryDruidNodeAndResourceVersion(String resourceVersion, DiscoveryDruidNode node)
+  {
+    this.resourceVersion = resourceVersion;
+    this.node = node;
+  }
 
-    public String getResourceVersion() {
-        return resourceVersion;
-    }
+  public String getResourceVersion()
+  {
+    return resourceVersion;
+  }
 
-    public DiscoveryDruidNode getNode() {
-        return node;
-    }
+  public DiscoveryDruidNode getNode()
+  {
+    return node;
+  }
 }

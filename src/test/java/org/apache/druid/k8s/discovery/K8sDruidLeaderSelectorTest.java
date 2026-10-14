@@ -16,10 +16,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import org.apache.druid.discovery.DiscoveryDruidNode;
 import org.apache.druid.discovery.DruidLeaderSelector;
 import org.apache.druid.discovery.NodeRole;
@@ -29,131 +28,157 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
-public class K8sDruidLeaderSelectorTest {
-    private final DiscoveryDruidNode testNode1 = new DiscoveryDruidNode(
-            new DruidNode("druid/router", "test-host1", true, 80, null, true, false), NodeRole.ROUTER, null);
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
-    private final K8sDiscoveryConfig discoveryConfig = new K8sDiscoveryConfig(
-            "druid-cluster",
-            null,
-            null,
-            "default",
-            "default",
-            Duration.millis(10_000),
-            Duration.millis(7_000),
-            Duration.millis(3_000));
+public class K8sDruidLeaderSelectorTest
+{
+  private final DiscoveryDruidNode testNode1 = new DiscoveryDruidNode(
+      new DruidNode("druid/router", "test-host1", true, 80, null, true, false),
+      NodeRole.ROUTER,
+      null);
 
-    private final String lockResourceName = "druid-leader-election";
+  private final K8sDiscoveryConfig discoveryConfig = new K8sDiscoveryConfig(
+      "druid-cluster",
+      null,
+      null,
+      "default",
+      "default",
+      Duration.millis(10_000),
+      Duration.millis(7_000),
+      Duration.millis(3_000));
 
-    @Test
-    @Timeout(value = 5_000, unit = TimeUnit.MILLISECONDS)
-    public void testLeaderElection_HappyPath() throws Exception {
-        K8sDruidLeaderSelector leaderSelector = new K8sDruidLeaderSelector(
-                testNode1.getDruidNode(),
-                lockResourceName,
-                discoveryConfig.getCoordinatorLeaderElectionConfigMapNamespace(),
-                discoveryConfig,
-                new K8sLeaderElectorFactory() {
-                    @Override
-                    public K8sLeaderElector create(String candidateId, String namespace, String lockResourceName) {
-                        return new K8sLeaderElector() {
-                            @Override
-                            public String getCurrentLeader() {
-                                return testNode1.getDruidNode().getHostAndPortToUse();
-                            }
+  private final String lockResourceName = "druid-leader-election";
 
-                            @Override
-                            public void run(Runnable startLeadingHook, Runnable stopLeadingHook) {
-                                startLeadingHook.run();
-                                try {
-                                    Thread.sleep(Long.MAX_VALUE);
-                                } catch (InterruptedException ex) {
-                                    stopLeadingHook.run();
-                                }
-                            }
-                        };
-                    }
-                });
+  @Test
+  @Timeout(value = 5_000, unit = TimeUnit.MILLISECONDS)
+  public void testLeaderElection_HappyPath() throws Exception
+  {
+    K8sDruidLeaderSelector leaderSelector = new K8sDruidLeaderSelector(
+        testNode1.getDruidNode(),
+        lockResourceName,
+        discoveryConfig.getCoordinatorLeaderElectionConfigMapNamespace(),
+        discoveryConfig,
+        new K8sLeaderElectorFactory()
+        {
+          @Override
+          public K8sLeaderElector create(String candidateId, String namespace, String lockResourceName)
+          {
+            return new K8sLeaderElector()
+            {
+              @Override
+              public String getCurrentLeader()
+              {
+                return testNode1.getDruidNode().getHostAndPortToUse();
+              }
 
-        Assertions.assertEquals(testNode1.getDruidNode().getHostAndPortToUse(), leaderSelector.getCurrentLeader());
-
-        CountDownLatch becomeLeaderLatch = new CountDownLatch(1);
-        CountDownLatch stopBeingLeaderLatch = new CountDownLatch(1);
-
-        leaderSelector.registerListener(new DruidLeaderSelector.Listener() {
-            @Override
-            public void becomeLeader() {
-                becomeLeaderLatch.countDown();
-            }
-
-            @Override
-            public void stopBeingLeader() {
-                stopBeingLeaderLatch.countDown();
-            }
+              @Override
+              public void run(Runnable startLeadingHook, Runnable stopLeadingHook)
+              {
+                startLeadingHook.run();
+                try {
+                  Thread.sleep(Long.MAX_VALUE);
+                }
+                catch (InterruptedException ex) {
+                  stopLeadingHook.run();
+                }
+              }
+            };
+          }
         });
 
-        becomeLeaderLatch.await();
-        leaderSelector.unregisterListener();
-        stopBeingLeaderLatch.await();
-    }
+    Assertions.assertEquals(testNode1.getDruidNode().getHostAndPortToUse(), leaderSelector.getCurrentLeader());
 
-    @Test
-    @Timeout(value = 5_000, unit = TimeUnit.MILLISECONDS)
-    public void testLeaderElection_LeaderElectorExits() throws Exception {
-        K8sDruidLeaderSelector leaderSelector = new K8sDruidLeaderSelector(
-                testNode1.getDruidNode(),
-                lockResourceName,
-                discoveryConfig.getCoordinatorLeaderElectionConfigMapNamespace(),
-                discoveryConfig,
-                new K8sLeaderElectorFactory() {
-                    @Override
-                    public K8sLeaderElector create(String candidateId, String namespace, String lockResourceName) {
-                        return new K8sLeaderElector() {
-                            private boolean isFirstTime = true;
+    CountDownLatch becomeLeaderLatch = new CountDownLatch(1);
+    CountDownLatch stopBeingLeaderLatch = new CountDownLatch(1);
 
-                            @Override
-                            public String getCurrentLeader() {
-                                return testNode1.getDruidNode().getHostAndPortToUse();
-                            }
+    leaderSelector.registerListener(new DruidLeaderSelector.Listener()
+    {
+      @Override
+      public void becomeLeader()
+      {
+        becomeLeaderLatch.countDown();
+      }
 
-                            @Override
-                            public void run(Runnable startLeadingHook, Runnable stopLeadingHook) {
-                                startLeadingHook.run();
+      @Override
+      public void stopBeingLeader()
+      {
+        stopBeingLeaderLatch.countDown();
+      }
+    });
 
-                                if (isFirstTime) {
-                                    isFirstTime = false;
-                                    stopLeadingHook.run();
-                                } else {
-                                    try {
-                                        Thread.sleep(Long.MAX_VALUE);
-                                    } catch (InterruptedException ex) {
-                                        stopLeadingHook.run();
-                                    }
-                                }
-                            }
-                        };
-                    }
-                });
+    becomeLeaderLatch.await();
+    leaderSelector.unregisterListener();
+    stopBeingLeaderLatch.await();
+  }
 
-        Assertions.assertEquals(testNode1.getDruidNode().getHostAndPortToUse(), leaderSelector.getCurrentLeader());
+  @Test
+  @Timeout(value = 5_000, unit = TimeUnit.MILLISECONDS)
+  public void testLeaderElection_LeaderElectorExits() throws Exception
+  {
+    K8sDruidLeaderSelector leaderSelector = new K8sDruidLeaderSelector(
+        testNode1.getDruidNode(),
+        lockResourceName,
+        discoveryConfig.getCoordinatorLeaderElectionConfigMapNamespace(),
+        discoveryConfig,
+        new K8sLeaderElectorFactory()
+        {
+          @Override
+          public K8sLeaderElector create(String candidateId, String namespace, String lockResourceName)
+          {
+            return new K8sLeaderElector()
+            {
+              private boolean isFirstTime = true;
 
-        CountDownLatch becomeLeaderLatch = new CountDownLatch(2);
-        CountDownLatch stopBeingLeaderLatch = new CountDownLatch(2);
+              @Override
+              public String getCurrentLeader()
+              {
+                return testNode1.getDruidNode().getHostAndPortToUse();
+              }
 
-        leaderSelector.registerListener(new DruidLeaderSelector.Listener() {
-            @Override
-            public void becomeLeader() {
-                becomeLeaderLatch.countDown();
-            }
+              @Override
+              public void run(Runnable startLeadingHook, Runnable stopLeadingHook)
+              {
+                startLeadingHook.run();
 
-            @Override
-            public void stopBeingLeader() {
-                stopBeingLeaderLatch.countDown();
-            }
+                if (isFirstTime) {
+                  isFirstTime = false;
+                  stopLeadingHook.run();
+                } else {
+                  try {
+                    Thread.sleep(Long.MAX_VALUE);
+                  }
+                  catch (InterruptedException ex) {
+                    stopLeadingHook.run();
+                  }
+                }
+              }
+            };
+          }
         });
 
-        becomeLeaderLatch.await();
-        leaderSelector.unregisterListener();
-        stopBeingLeaderLatch.await();
-    }
+    Assertions.assertEquals(testNode1.getDruidNode().getHostAndPortToUse(), leaderSelector.getCurrentLeader());
+
+    CountDownLatch becomeLeaderLatch = new CountDownLatch(2);
+    CountDownLatch stopBeingLeaderLatch = new CountDownLatch(2);
+
+    leaderSelector.registerListener(new DruidLeaderSelector.Listener()
+    {
+      @Override
+      public void becomeLeader()
+      {
+        becomeLeaderLatch.countDown();
+      }
+
+      @Override
+      public void stopBeingLeader()
+      {
+        stopBeingLeaderLatch.countDown();
+      }
+    });
+
+    becomeLeaderLatch.await();
+    leaderSelector.unregisterListener();
+    stopBeingLeaderLatch.await();
+  }
 }

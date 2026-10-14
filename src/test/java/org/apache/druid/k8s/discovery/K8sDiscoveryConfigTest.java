@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.druid.k8s.discovery;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,45 +25,49 @@ import org.joda.time.Duration;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-public class K8sDiscoveryConfigTest {
-    private final ObjectMapper jsonMapper = new DefaultObjectMapper();
+public class K8sDiscoveryConfigTest
+{
+  private final ObjectMapper jsonMapper = new DefaultObjectMapper();
 
-    @Test
-    public void testDefaultValuesSerde() throws Exception {
-        testSerde(
-                "{\"clusterIdentifier\": \"test-cluster\"}\n",
-                new K8sDiscoveryConfig("test-cluster", null, null, null, null, null, null, null));
-    }
+  @Test
+  public void testDefaultValuesSerde() throws Exception
+  {
+    testSerde(
+        "{\"clusterIdentifier\": \"test-cluster\"}\n",
+        new K8sDiscoveryConfig("test-cluster", null, null, null, null, null, null, null));
+  }
 
-    @Test
-    public void testCustomizedValuesSerde() throws Exception {
-        testSerde(
-                "{\n"
-                        + "  \"clusterIdentifier\": \"test-cluster\",\n"
-                        + "  \"podNameEnvKey\": \"PODNAMETEST\",\n"
-                        + "  \"podNamespaceEnvKey\": \"PODNAMESPACETEST\",\n"
-                        + "  \"coordinatorLeaderElectionConfigMapNamespace\": \"coordinatorns\",\n"
-                        + "  \"overlordLeaderElectionConfigMapNamespace\": \"overlordns\",\n"
-                        + "  \"leaseDuration\": \"PT3S\",\n"
-                        + "  \"renewDeadline\": \"PT2S\",\n"
-                        + "  \"retryPeriod\": \"PT1S\"\n"
-                        + "}\n",
-                new K8sDiscoveryConfig(
-                        "test-cluster",
-                        "PODNAMETEST",
-                        "PODNAMESPACETEST",
-                        "coordinatorns",
-                        "overlordns",
-                        Duration.millis(3000),
-                        Duration.millis(2000),
-                        Duration.millis(1000)));
-    }
+  @Test
+  public void testCustomizedValuesSerde() throws Exception
+  {
+    testSerde(
+        "{\n"
+            + "  \"clusterIdentifier\": \"test-cluster\",\n"
+            + "  \"podNameEnvKey\": \"PODNAMETEST\",\n"
+            + "  \"podNamespaceEnvKey\": \"PODNAMESPACETEST\",\n"
+            + "  \"coordinatorLeaderElectionConfigMapNamespace\": \"coordinatorns\",\n"
+            + "  \"overlordLeaderElectionConfigMapNamespace\": \"overlordns\",\n"
+            + "  \"leaseDuration\": \"PT3S\",\n"
+            + "  \"renewDeadline\": \"PT2S\",\n"
+            + "  \"retryPeriod\": \"PT1S\"\n"
+            + "}\n",
+        new K8sDiscoveryConfig(
+            "test-cluster",
+            "PODNAMETEST",
+            "PODNAMESPACETEST",
+            "coordinatorns",
+            "overlordns",
+            Duration.millis(3000),
+            Duration.millis(2000),
+            Duration.millis(1000)));
+  }
 
-    private void testSerde(String jsonStr, K8sDiscoveryConfig expected) throws Exception {
-        K8sDiscoveryConfig actual = jsonMapper.readValue(
-                jsonMapper.writeValueAsString(jsonMapper.readValue(jsonStr, K8sDiscoveryConfig.class)),
-                K8sDiscoveryConfig.class);
+  private void testSerde(String jsonStr, K8sDiscoveryConfig expected) throws Exception
+  {
+    K8sDiscoveryConfig actual = jsonMapper.readValue(
+        jsonMapper.writeValueAsString(jsonMapper.readValue(jsonStr, K8sDiscoveryConfig.class)),
+        K8sDiscoveryConfig.class);
 
-        Assertions.assertEquals(expected, actual);
-    }
+    Assertions.assertEquals(expected, actual);
+  }
 }
